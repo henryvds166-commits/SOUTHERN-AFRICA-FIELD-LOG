@@ -1,37 +1,41 @@
-# Offline Field & Travel Guide of Southern Africa
+# Southern Africa Offline Field Log
 
-An installable, offline-first web app to capture the day's memories on your travels in three sections: **Flora**, **Fauna** and **Culture & sites**. Everything is stored on your device (IndexedDB). No account and no internet are needed after the first load.
+An installable, offline-first field notebook for **education and research**. Record Southern African flora, fauna and cultural heritage observations. Your records and photographs are stored locally in the browser on your device; there is no account or cloud synchronisation.
 
 © 2026 Henry van der Schyff. All rights reserved.
 
+## Intended users
+
+Learners, teachers, students, naturalists, citizen-science contributors, field researchers, guides and people documenting Southern African biodiversity and cultural heritage. The app is an educational and research aid, not an authoritative identification service or a replacement for expert review.
+
 ## The three sections
-- **Flora:** common names (English / Afrikaans), family, genus, species, date observed, locality / specimen details, flowering season / month, **height of plant / tree**, research notes, photographs.
-- **Fauna:** the same, without the flowering season and height, but with a **Tracks / spoor** box (you can even save an entry for unidentified spoor).
-- **Culture & sites (field entry screen):** photographs (camera, gallery or internet downloads), title (optional), historical date / era (free text), province (the nine provinces, or "Outside South Africa" plus a country) and town / city (required), role players (one per line), field notes / story, and **Save to Diary**, which stores the entry with your GPS position and today's date and time.
 
-## Day report (PDF or PowerPoint)
-Choose dates and sections under **Printable day report**, then **Create PDF** or **Create PowerPoint**. Photos are shrunk to keep the file small, and every page or slide cites this app. Each entry also has a **PDF** button for a one-page report of just that entry.
+- **Flora:** English and Afrikaans common names, family, genus, species, date, locality, flowering season, plant height, research notes and photographs.
+- **Fauna:** common and scientific names, family, date, locality, tracks / spoor, research notes and photographs.
+- **Cultural sites:** site title, historical era, province or country, town, role players, visit date, GPS and field notes. New photographs in this section are captured with the device camera; gallery and internet-download uploads are not offered.
 
-## Also in the app
-- **User manual**, **Field guides** (book lists for the Western Cape and other provinces) and **Donate** buttons at the top of the page.
-- Backup & import: JSON (all sections, with photos) and CSV (text only, current section).
-- Android back button closes the open window; **Install app** button on Chrome / Edge.
+## Offline species catalogue
+
+`species-data.js` contains the hidden, locally bundled reference catalogue. The flora list is built from the supplied South African flora CSV. The fauna list is a starter selection of representative Southern African mammals, birds, reptiles and amphibians. Type a genus or common/scientific name (for example **Protea**) in the species lookup and select a suggestion to populate the observation form. The catalogue is not exhaustive; confirm uncertain identifications with current field references or specialists.
+
+## Camera
+
+The camera panel offers lens/device selection when the browser exposes multiple cameras, and macro focus only when the camera reports support. Image stabilisation is enabled only where the device/browser exposes a compatible capability; otherwise it remains device-managed. Camera support varies by browser, hardware and secure-context permissions.
+
+## PDF reports and backups
+
+Choose dates and sections under **Printable day report**, then create a PDF. Each observation also has a PDF action. Export JSON regularly to back up all entries and photographs. CSV exports contain text only. To move records to another device, export JSON on one device and import it on the other.
+
+## Terms, copyright and third-party licences
+
+This app is provided as an educational and research tool. The original app name, branding, interface, text, artwork and source material may not be copied, duplicated, repackaged, resold, published or redistributed without written permission, except where applicable law or a separate licence expressly allows it. Your own observations remain yours. Third-party components remain governed by their own licence agreements; retain and respect their notices in `THIRD-PARTY-LICENSES.txt`.
+
+Users must comply with land access rules, conservation regulations and cultural-site protocols. Do not disturb wildlife, plants, archaeological material or heritage sites. Protect sensitive species and cultural-location data. The app does not guarantee identification accuracy, catalogue completeness, GPS availability or uninterrupted operation. Keep independent backups.
 
 ## Hosting / installing
-Put the folder on any HTTPS site (for example GitHub Pages), open the link once while online, then install it. The report tools (`pdf-lib.min.js`, `pptxgen.bundle.js`) are cached with the app so reports also work offline.
 
-When you change any file, raise `VERSION` in `sw.js` so installed copies update. Your existing records are kept: the app keeps the same internal database name.
+Host the folder on an HTTPS site (for example GitHub Pages), open it once while online, then install it in Chrome or Edge. HTTPS is required for service workers, camera and installable offline behaviour. When changing files, bump `VERSION` in `sw.js`. The IndexedDB name remains unchanged to preserve existing user observations.
 
 ## Files
-`index.html`, `styles.css`, `app.js`, `config.js` (names, wording, copyright), `sw.js`, `manifest.webmanifest`, icons, `pdf-lib.min.js` and `pptxgen.bundle.js` (open-source report libraries, see `THIRD-PARTY-LICENSES.txt`).
 
-
-## Publish with GitHub Pages
-
-1. Create a new repository on GitHub (for example, `southern-africa-field-guide`).
-2. Extract the ZIP. It creates a folder named `offline-field-travel-guide-github` containing the app files. Upload the **contents of that folder** to the repository root (so `index.html` is at the root, not buried inside another folder).
-3. In the repository, open **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**, select `main` and `/(root)`, then save.
-5. Wait for GitHub Pages to publish. Open the Pages URL once while online, then use **Install app** in Chrome or Edge.
-
-The app is a static web app and does not need a build step. GitHub Pages provides HTTPS, which is required for service workers and installable offline behaviour. Keep the app files together in the same folder. When updating the app, increase `VERSION` in `sw.js` so existing installs refresh their cached files.
+`index.html`, `styles.css`, `app.js`, `config.js`, `species-data.js`, `field-guide-hero.png`, `sw.js`, `manifest.webmanifest`, icons, `pdf-lib.min.js` and `THIRD-PARTY-LICENSES.txt`.

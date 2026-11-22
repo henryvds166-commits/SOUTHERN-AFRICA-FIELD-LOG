@@ -1,7 +1,7 @@
 {
-  "name": "Offline Field and Travel Guide of Southern Africa",
-  "short_name": "Field Guide",
-  "description": "Offline field and travel guide of Southern Africa: capture flora, fauna and cultural sites",
+  "name": "Southern Africa Offline Field Log",
+  "short_name": "Southern Africa Field Log",
+  "description": "Educational and research field log for Southern African flora, fauna and cultural heritage.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

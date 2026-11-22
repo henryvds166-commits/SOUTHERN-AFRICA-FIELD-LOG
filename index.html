@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Offline Field &amp; Travel Guide of Southern Africa</title>
-<meta name="description" content="Offline field and travel guide of Southern Africa: capture flora, fauna and cultural sites">
+<title>Southern Africa Offline Field Log</title>
+<meta name="description" content="Southern Africa Offline Field Log: an educational and research tool for recording plants, animals and cultural heritage in the field.">
 <meta name="author" content="Henry van der Schyff">
 <meta name="theme-color" content="#183d32">
 <link rel="manifest" href="manifest.webmanifest">
@@ -33,15 +33,15 @@
 
  <section class="hero">
   <div>
-   <p class="eyebrow">SOUTHERN AFRICA FIELD LOG</p>
-   <h2 id="heroTitle">Your field observations,<br>wherever you go.</h2>
+   <p class="eyebrow">SOUTHERN AFRICA · OFFLINE FIELD LOG</p>
+   <h2 id="heroTitle">Capture the day’s memories,<br>wherever you travel.</h2>
    <p class="sub">Record the plants and animals and cultural sites you find in the field, with date, place, notes and photographs. Everything is stored on this device and works without internet.</p>
-   <div class="quicklinks"><button class="qlink" id="openManual" type="button">&#128216; User manual</button><button class="qlink" id="openGuides" type="button">&#128218; Field guides</button><button class="qlink donate" id="openDonate" type="button">&#10084; Donate</button></div>
+   <div class="quicklinks"><button class="qlink" id="openManual" type="button">&#128216; User manual</button><button class="qlink" id="openGuides" type="button">&#128218; Field guides</button><button class="qlink" id="openTerms" type="button">&#9878; Terms &amp; conditions</button><button class="qlink donate" id="openDonate" type="button">&#10084; Donate</button></div>
   </div>
-  <svg class="ico hero-flower" viewBox="0 0 512 512" aria-hidden="true"><use href="#i-app"/></svg>
+  <img class="hero-art" src="field-guide-hero.png" alt="An illustrative sunbird, King Protea and San rock-art motif, representing Southern African nature and cultural heritage">
  </section>
 
- <div class="tabs" role="tablist" aria-label="Section"><button class="tab active" id="tabFlora" type="button" role="tab" aria-selected="true">Flora <span id="floraTabCount">0</span></button><button class="tab" id="tabFauna" type="button" role="tab" aria-selected="false">Fauna <span id="faunaTabCount">0</span></button><button class="tab" id="tabCulture" type="button" role="tab" aria-selected="false">Culture &amp; sites <span id="cultureTabCount">0</span></button></div>
+ <div class="tabs" role="tablist" aria-label="Section"><button class="tab active" id="tabFlora" type="button" role="tab" aria-selected="true"><svg class="tab-icon" viewBox="0 0 512 512" aria-hidden="true"><use href="#i-flora"/></svg><span class="tab-word">Flora</span><span class="tab-count" id="floraTabCount">0</span></button><button class="tab" id="tabFauna" type="button" role="tab" aria-selected="false"><svg class="tab-icon" viewBox="0 0 512 512" aria-hidden="true"><use href="#i-fauna"/></svg><span class="tab-word">Fauna</span><span class="tab-count" id="faunaTabCount">0</span></button><button class="tab" id="tabCulture" type="button" role="tab" aria-selected="false"><svg class="tab-icon" viewBox="0 0 512 512" aria-hidden="true"><use href="#i-culture"/></svg><span class="tab-word">Cultural sites</span><span class="tab-count" id="cultureTabCount">0</span></button></div>
 
  <div class="toolbar">
   <label class="searchbox"><span aria-hidden="true">&#8981;</span><input id="search" type="search" placeholder="Search family, genus, species, place or notes" aria-label="Search observations"></label>
@@ -59,7 +59,7 @@
 
  <section>
   <div class="sectionhead">
-   <div><p class="eyebrow" id="sectionEyebrow">FLORA LOG</p><h2 id="sectionTitle">Flora observations</h2></div>
+   <div class="section-heading-title"><svg class="section-icon" viewBox="0 0 512 512" aria-hidden="true"><use id="sectionIconUse" href="#i-flora"/></svg><div><p class="eyebrow" id="sectionEyebrow">FLORA LOG</p><h2 id="sectionTitle">Flora observations</h2></div></div>
    <button class="btn primary" id="addRecord" type="button">&#65291; <span id="addLabel">Add flora observation</span></button>
   </div>
   <div class="controls">
@@ -75,7 +75,7 @@
  <section class="toolshead" id="reportSection">
   <div class="sectionhead"><div><p class="eyebrow">SHARE YOUR DAY</p><h2>Printable day report</h2></div></div>
   <div class="reportbox">
-   <p class="muted">Turn your flora, fauna and cultural observations into a small PDF or PowerPoint, with photographs and a citation to this app.</p>
+   <p class="muted">Turn your flora, fauna and cultural observations into a printable PDF report, with photographs and a citation to this app.</p>
    <div class="reportgrid">
     <label>From<input type="date" id="reportFrom"></label>
     <label>To<input type="date" id="reportTo"></label>
@@ -87,7 +87,7 @@
     <label><input type="checkbox" id="repCulture" checked> Culture &amp; sites</label>
    </div>
    <p class="reportcount" id="reportCount">0 entries selected</p>
-   <div class="reportbtns"><button class="btn primary" id="makePdf" type="button">&#128196; Create PDF</button><button class="btn primary" id="makePptx" type="button">&#128202; Create PowerPoint</button></div>
+   <div class="reportbtns"><button class="btn primary" id="makePdf" type="button">&#128196; Create PDF report</button></div>
   </div>
  </section>
 
@@ -109,6 +109,12 @@
   <input type="hidden" id="recordId">
   <p class="formhint">You only need one name to save: a common name, or a genus / species. The scientific name can be added later.</p>
   <div class="formgrid">
+   <div class="wide catalog-lookup">
+    <label for="speciesLookup">Find a species in the offline catalogue</label>
+    <input id="speciesLookup" type="search" autocomplete="off" placeholder="Type a name or genus, e.g. Protea" aria-controls="speciesSuggestions" aria-expanded="false">
+    <div id="speciesSuggestions" class="species-suggestions hidden" role="listbox" aria-label="Matching species"></div>
+    <small id="speciesLookupHint" class="catalog-hint">Search the built-in Southern African reference list, then select a result to fill in its names.</small>
+   </div>
    <label>Common name (English)<input id="commonNameEn" placeholder=""></label>
    <label>Common name (Afrikaans)<input id="commonNameAf" placeholder=""></label>
    <label>Family<input id="family" list="familyList" placeholder=""></label>
@@ -155,8 +161,7 @@
    <div class="wide photofield">
     <span class="label">Photographs <small id="sitePhotoCountLabel"></small></span>
     <div class="photobtns quickactions">
-     <button type="button" class="btn secondary" id="siteTakePhoto">&#128247; Add photo from camera</button>
-     <label class="btn secondary filebutton">&#128444; Add photo(s) from gallery or internet downloads<input id="sitePhotos" type="file" accept="image/*" multiple></label>
+     <button type="button" class="btn secondary" id="siteTakePhoto">&#128247; Photograph site with camera</button>
     </div>
     <div class="photogrid" id="sitePhotoGrid"></div>
     <div class="photoempty" id="sitePhotoEmpty">No photographs yet</div>
@@ -209,9 +214,31 @@
  <div class="infobody" id="manualBody"></div>
 </dialog>
 
+
+<dialog id="termsDialog" class="infodlg">
+ <div class="dialoghead"><h2>Terms &amp; conditions</h2><button type="button" class="close" data-close="termsDialog" aria-label="Close">&times;</button></div>
+ <div class="infobody terms-body">
+  <p><strong>Southern Africa Offline Field Log</strong> is provided as an educational and research field-recording tool. By using the app, you agree to the following conditions.</p>
+  <h3>1. Independent project</h3><p>Southern Africa Offline Field Log is an independent project authored and developed by Henry van der Schyff. It is not an official government, university, conservation-agency or institutional product. No affiliation, sponsorship or endorsement by such organisations is implied.</p>
+  <h3>2. Intended users and purpose</h3><p>The app is intended for learners, educators, students, naturalists, citizen-science contributors, field researchers, guides and people documenting Southern African biodiversity and cultural heritage. It supports observation, learning and research; it is not a substitute for expert identification, formal scientific review, permits or professional advice.</p>
+  <h3>3. Responsible field use</h3><p>Users must follow applicable laws, land-access rules, conservation regulations and site instructions. Do not damage, remove or disturb plants, animals, fossils, archaeological material or cultural sites. Respect local communities, Indigenous knowledge, cultural protocols and privacy. Avoid publishing precise locations of vulnerable species or sensitive heritage places without permission.</p>
+  <h3>4. Accuracy and research responsibility</h3><p>Species suggestions are reference aids, not confirmed identifications. Check names and observations against current authoritative field guides, taxonomic references or qualified specialists. The app does not validate records or guarantee that catalogue entries are complete or current.</p>
+  <h3>5. Data and backups</h3><p>Records and photographs are stored locally on the device or browser profile. The app does not automatically synchronise or back up your data. You are responsible for exporting and safely storing backups. Your own observations remain yours.</p>
+  <h3>6. Copyright and copying</h3><p>The app’s original name, branding, interface, text, artwork and original source material are protected by copyright. You may not copy, duplicate, repackage, resell, publish or distribute the app or its protected materials without prior written permission from the copyright holder, except where applicable law or a separate licence expressly allows it. This restriction does not claim ownership of your own field records.</p>
+  <h3>7. Third-party software and licences</h3><p>Some components are supplied by third parties and remain subject to their own licence agreements. You must respect those terms and retain required copyright and licence notices. The included <strong>THIRD-PARTY-LICENSES.txt</strong> file records the applicable notices. Where a third-party licence grants rights that differ from these app terms, that licence governs the relevant third-party component.</p>
+  <h3>8. Availability and limitation</h3><p>The app is supplied “as is”. Device, browser, storage, camera and GPS support can vary. The developer does not warrant uninterrupted operation, complete catalogue coverage or error-free scientific identification. Keep independent backups and use appropriate professional judgement.</p>
+  <p class="terms-updated"><strong>Version 13 · November 2026</strong></p>
+ </div>
+</dialog>
+
 <dialog id="cameraDialog" class="cameradlg">
  <div class="camhead"><strong>Take photo</strong><button type="button" class="close" id="camClose" aria-label="Close camera">&times;</button></div>
  <div class="camstage"><video id="camVideo" playsinline muted autoplay></video><div class="camerr hidden" id="camErr"></div></div>
+ <div class="camoptions">
+  <label id="camDeviceWrap">Camera / lens<select id="camDevice"><option value="">Automatic rear camera</option></select></label>
+  <label id="camFocusWrap">Focus<select id="camFocus"><option value="auto">Automatic focus</option></select></label>
+  <p id="camEnhanceStatus" role="status">Camera enhancements depend on device support.</p>
+ </div>
  <div class="camfallback hidden" id="camFallback"><label class="btn secondary filebutton">Open my camera app instead<input id="camNative" type="file" accept="image/*" capture="environment"></label></div>
  <div class="camactions">
   <button type="button" class="btn secondary hidden" id="camSwitch">&#8635; Switch camera</button>
@@ -225,6 +252,7 @@
 <div class="toast hidden" id="toast" role="status"><span id="toastMsg"></span><button id="toastUndo" class="hidden" type="button">Undo</button></div>
 
 <script src="config.js"></script>
+<script src="species-data.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

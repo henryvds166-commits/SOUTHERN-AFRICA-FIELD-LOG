@@ -1,8 +1,9 @@
 const C=window.FLORA;
 const DB_NAME=C.dbName,DB_VERSION=3;
-const APP_NAME='Offline Field & Travel Guide of Southern Africa';
+const APP_NAME=C.name;
 const CITE='Created with '+APP_NAME+' \u00B7 \u00A9 2026 Henry van der Schyff';
 /* Three sections share one database. 'flora' keeps the original store name so existing observations are preserved. */
+const SPECIES_CATALOG=window.FIELD_SPECIES_DATA||{flora:[],fauna:[]};
 const SEC={
  flora:{store:'observations',noun:'flora',eyebrow:'FLORA LOG',title:'Flora observations',icon:'#i-flora',season:true,ph:{commonNameEn:'e.g. King protea',commonNameAf:'e.g. Koningsprotea',family:'e.g. Proteaceae',genus:'e.g. Protea',species:'e.g. cynaroides',locality:'Where was it found? Habitat, altitude, number of plants, specimen description',notes:'Identification notes, references, pollinators, observations'}},
  culture:{store:'culture',noun:'cultural site',eyebrow:'CULTURE & TOURIST SITES',title:'Cultural & tourist sites',icon:'#i-culture',season:false,ph:{}},
@@ -52,7 +53,7 @@ addEventListener('online',updateConnection);addEventListener('offline',updateCon
 function applySection(){
   const s=SEC[cur],cu=cur==='culture';
   for(const [k,id] of [['flora','tabFlora'],['fauna','tabFauna'],['culture','tabCulture']]){$(id).classList.toggle('active',cur===k);$(id).setAttribute('aria-selected',cur===k);}
-  $('sectionEyebrow').textContent=s.eyebrow;$('sectionTitle').textContent=s.title;
+  $('sectionEyebrow').textContent=s.eyebrow;$('sectionTitle').textContent=s.title;$('sectionIconUse').setAttribute('href',s.icon);
   $('addLabel').textContent=cu?'Add site visit':'Add '+s.noun+' observation';
   $('csvSection').textContent=cu?'culture & sites':s.noun;
   $('groupLabel').textContent=cu?'By place':'By family';
@@ -199,52 +200,90 @@ async function addFiles(files){
 $('photo').onchange=async e=>{photoTarget='rec';const fs=[...e.target.files];e.target.value='';await addFiles(fs);};
 $('camNative').onchange=async e=>{const fs=[...e.target.files];e.target.value='';await addFiles(fs);if(fs.length){$('cameraDialog').close();}};
 
-/* ---------- in-app camera (opens the phone or laptop camera directly) ---------- */
-let camStream=null,camFacing='environment',camShots=0;
+/* ---------- in-app camera with capability-aware lens/focus controls ---------- */
+let camStream=null,camFacing='environment',camShots=0,camDeviceList=[];
 function stopCamera(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}const v=$('camVideo');v.srcObject=null;$('camShoot').disabled=true;}
 function showCamErr(msg){const e=$('camErr');e.textContent=msg;e.classList.remove('hidden');$('camFallback').classList.remove('hidden');$('camShoot').disabled=true;}
-async function startCamera(){
-  stopCamera();$('camErr').classList.add('hidden');$('camFallback').classList.add('hidden');
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showCamErr('The live camera is not available here (it needs a secure https link). Use the button below to open your camera app instead.');return;}
+function resetCamFocus(){const sel=$('camFocus');sel.innerHTML='<option value="auto">Automatic focus</option>';sel.value='auto';}
+async function refreshCameraChoices(){
   try{
-    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:camFacing},width:{ideal:1920},height:{ideal:1440}},audio:false});
+    camDeviceList=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+    const sel=$('camDevice'),old=sel.value;
+    sel.innerHTML='<option value="">Automatic rear camera</option>'+camDeviceList.map((d,i)=>`<option value="${escapeHTML(d.deviceId)}">${escapeHTML(d.label||('Camera '+(i+1)))}</option>`).join('');
+    if(camDeviceList.some(d=>d.deviceId===old))sel.value=old;
+    $('camDeviceWrap').classList.toggle('hidden',camDeviceList.length<2&&!camDeviceList.some(d=>/macro/i.test(d.label||'')));
+    $('camSwitch').classList.toggle('hidden',camDeviceList.length<2);
+  }catch{camDeviceList=[];$('camDeviceWrap').classList.add('hidden');$('camSwitch').classList.add('hidden');}
+}
+async function configureCameraTrack(track){
+  const caps=track.getCapabilities?track.getCapabilities():{};
+  const focus=$('camFocus');resetCamFocus();
+  const modes=Array.from(caps.focusMode||[]);
+  if(modes.includes('continuous'))focus.add(new Option('Continuous auto focus','continuous'));
+  if(modes.includes('single-shot'))focus.add(new Option('Single-shot focus','single-shot'));
+  if(modes.includes('macro'))focus.add(new Option('Macro focus','macro'));
+  $('camFocusWrap').classList.toggle('hidden',modes.length===0);
+  const advanced=[];
+  if(modes.includes('continuous'))advanced.push({focusMode:'continuous'});
+  if(caps.imageStabilization===true)advanced.push({imageStabilization:true});
+  const stabilizationModes=Array.from(caps.stabilizationMode||[]);
+  if(stabilizationModes.includes('standard'))advanced.push({stabilizationMode:'standard'});
+  let stabilized=false;
+  try{if(advanced.length){await track.applyConstraints({advanced});stabilized=caps.imageStabilization===true||stabilizationModes.length>0;}}catch{}
+  const macroLens=camDeviceList.some(d=>/macro/i.test(d.label||''));
+  const stabilizationText=stabilized?'Image stabilisation enabled where supported.':'Image stabilisation is controlled by the device camera; hold the phone steady.';
+  const macroText=(modes.includes('macro')||macroLens)?' Macro focus/lens is available on this device.':' Macro lens selection appears only if the device and browser expose it.';
+  $('camEnhanceStatus').textContent=stabilizationText+macroText;
+  focus.onchange=async()=>{const value=focus.value;if(value==='auto')return;try{await track.applyConstraints({advanced:[{focusMode:value}]});}catch{$('camEnhanceStatus').textContent='This camera does not allow that focus mode; automatic focus remains active.';}};
+}
+async function startCamera(){
+  stopCamera();$('camErr').classList.add('hidden');$('camFallback').classList.add('hidden');$('camEnhanceStatus').textContent='Checking camera capabilities…';
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showCamErr('The live camera is not available here (it needs a secure HTTPS link). Use the button below to open your camera app instead.');return;}
+  try{
+    const selected=$('camDevice').value;
+    const video={width:{ideal:1920},height:{ideal:1440}};
+    if(selected)video.deviceId={exact:selected};else video.facingMode={ideal:camFacing};
+    camStream=await navigator.mediaDevices.getUserMedia({video,audio:false});
     const v=$('camVideo');v.srcObject=camStream;await v.play().catch(()=>{});
-    const front=(camStream.getVideoTracks()[0].getSettings().facingMode||camFacing)==='user';
-    v.classList.toggle('mirror',front);
+    const track=camStream.getVideoTracks()[0];
+    const front=(track.getSettings().facingMode||camFacing)==='user';v.classList.toggle('mirror',front);
     $('camShoot').disabled=false;
-    const cams=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
-    $('camSwitch').classList.toggle('hidden',cams.length<2);
+    await refreshCameraChoices();
+    await configureCameraTrack(track);
   }catch(err){
     const n=err&&err.name;
-    showCamErr(n==='NotAllowedError'||n==='SecurityError'?'Camera permission was blocked. Tap the lock icon next to the web address, allow Camera for this site, then tap Take photo again. Or use the button below.':n==='NotFoundError'||n==='OverconstrainedError'?'No camera was found on this device. You can pick a photo instead.':'The camera could not be started. Use the button below to open your camera app instead.');
+    showCamErr(n==='NotAllowedError'||n==='SecurityError'?'Camera permission was blocked. Allow Camera access for this site, then try again.':n==='NotFoundError'||n==='OverconstrainedError'?'The selected camera is unavailable. Choose another camera or use the camera-app option below.':'The camera could not be started. Use the button below to open your camera app instead.');
   }
 }
 function openCamera(target){
   photoTarget=target;
   if(photoArr().length>=MAX_PHOTOS){alert(`Up to ${MAX_PHOTOS} photographs can be kept per observation.`);return;}
-  camShots=0;$('camCount').textContent='0';openModal($('cameraDialog'));startCamera();
+  camShots=0;$('camCount').textContent='0';$('camDevice').value='';openModal($('cameraDialog'));startCamera();
 }
 $('takePhoto').onclick=()=>openCamera('rec');
+$('camNative').onchange=async e=>{const fs=[...e.target.files];e.target.value='';await addFiles(fs);if(fs.length){$('cameraDialog').close();}};
 $('camShoot').onclick=()=>{
   const v=$('camVideo');if(!v.videoWidth)return;
   if(photoArr().length>=MAX_PHOTOS){alert(`Up to ${MAX_PHOTOS} photographs can be kept per observation.`);return;}
   const s=Math.min(1,1400/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement('canvas');
   c.width=Math.round(v.videoWidth*s);c.height=Math.round(v.videoHeight*s);c.getContext('2d').drawImage(v,0,0,c.width,c.height);
-  photoArr().push(c.toDataURL('image/jpeg',.82));refreshPhotoUI();camShots++;$('camCount').textContent=camShots;
+  photoArr().push(c.toDataURL('image/jpeg',.86));refreshPhotoUI();camShots++;$('camCount').textContent=camShots;
   const st=document.querySelector('.camstage');st.classList.add('flash');setTimeout(()=>st.classList.remove('flash'),180);
 };
-$('camSwitch').onclick=()=>{camFacing=camFacing==='environment'?'user':'environment';startCamera();};
+$('camSwitch').onclick=()=>{camFacing=camFacing==='environment'?'user':'environment';$('camDevice').value='';startCamera();};
+$('camDevice').onchange=startCamera;
 $('camDone').onclick=$('camClose').onclick=()=>$('cameraDialog').close();
 $('cameraDialog').addEventListener('close',stopCamera);
 function refreshLists(){
   const records=recs();
   const opt=a=>a.map(v=>`<option value="${escapeHTML(v)}">`).join('');
-  $('familyList').innerHTML=opt([...new Set(records.map(r=>r.family).filter(Boolean))].sort());
+  const catalog=activeCatalog();
+  $('familyList').innerHTML=opt([...new Set([...records,...catalog].map(r=>r.family).filter(Boolean))].sort());
   const fam=$('family').value.trim().toLowerCase();
-  const pool=records.filter(r=>!fam||(r.family||'').toLowerCase()===fam);
-  $('genusList').innerHTML=opt([...new Set((pool.length?pool:records).map(r=>r.genus).filter(Boolean))].sort());
+  const pool=[...records,...catalog].filter(r=>!fam||(r.family||'').toLowerCase()===fam);
+  $('genusList').innerHTML=opt([...new Set((pool.length?pool:[...records,...catalog]).map(r=>r.genus).filter(Boolean))].sort());
   const g=norm($('genus').value);
-  $('speciesList').innerHTML=opt([...new Set(records.filter(r=>g&&norm(r.genus)===g).map(r=>r.species).filter(Boolean))].sort());
+  $('speciesList').innerHTML=opt([...new Set([...records,...catalog].filter(r=>g&&norm(r.genus)===g).map(r=>r.species).filter(Boolean))].sort());
 }
 function suggestFamily(genus){
   const g=norm(genus);if(!g)return'';
@@ -276,6 +315,54 @@ function suggestScientific(field){
 $('commonNameEn').addEventListener('change',()=>suggestScientific('commonNameEn'));$('commonNameAf').addEventListener('change',()=>suggestScientific('commonNameAf'));
 $('species').addEventListener('change',suggestCommon);$('species').addEventListener('blur',suggestCommon);
 $('family').addEventListener('input',()=>{$('family').dataset.auto='';refreshLists();});
+function activeCatalog(){return SPECIES_CATALOG[cur]||[];}
+function catalogDisplayName(item){return item.scientificName||[item.genus,item.species].filter(Boolean).join(' ');}
+function catalogSearch(query){
+  const q=norm(query);if(q.length<2)return[];
+  const words=q.split(' ').filter(Boolean);
+  const catalog=activeCatalog();
+  const catalogMatches=catalog.map((item,index)=>({item,index,source:'catalog'})).filter(x=>{
+    const hay=norm([x.item.scientificName,x.item.genus,x.item.species,x.item.commonNameEn,x.item.commonNameAf,x.item.region,x.item.category].join(' '));
+    const familyMatch=norm(x.item.family)===q;
+    return words.every(w=>hay.includes(w))||familyMatch;
+  }).map(x=>({...x,score:norm(x.item.genus)===q?0:norm(x.item.scientificName).startsWith(q)?1:2}));
+  const existing=recs().map(item=>({item,source:'record'})).filter(x=>{
+    const hay=norm([sciName(x.item),x.item.family,x.item.commonNameEn,x.item.commonNameAf,x.item.locality].join(' '));
+    return words.every(w=>hay.includes(w));
+  }).map(x=>({...x,score:3}));
+  const seen=new Set();
+  return [...catalogMatches,...existing].sort((a,b)=>a.score-b.score||catalogDisplayName(a.item).localeCompare(catalogDisplayName(b.item))).filter(x=>{
+    const k=norm(catalogDisplayName(x.item)+' '+(x.item.commonNameEn||''));if(seen.has(k))return false;seen.add(k);return true;
+  }).slice(0,14);
+}
+let visibleSpeciesSuggestions=[];
+function renderSpeciesSuggestions(query){
+  const box=$('speciesSuggestions'),q=(query||'').trim();
+  if(q.length<2){box.innerHTML='';box.classList.add('hidden');$('speciesLookup').setAttribute('aria-expanded','false');return;}
+  visibleSpeciesSuggestions=catalogSearch(q);
+  if(!visibleSpeciesSuggestions.length){box.innerHTML='<div class="suggestion-empty">No catalogue match. You can still enter a name manually.</div>';box.classList.remove('hidden');$('speciesLookup').setAttribute('aria-expanded','true');return;}
+  box.innerHTML=visibleSpeciesSuggestions.map((x,i)=>{
+    const r=x.item,common=[r.commonNameEn,r.commonNameAf].filter(Boolean).join(' · '),meta=[r.family,r.region].filter(Boolean).join(' · ');
+    return `<button type="button" class="species-option" role="option" aria-selected="false" data-species-choice="${i}"><strong>${escapeHTML(catalogDisplayName(r))}</strong>${common?`<span>${escapeHTML(common)}</span>`:''}${meta?`<small>${escapeHTML(meta)}</small>`:''}</button>`;
+  }).join('');
+  box.classList.remove('hidden');$('speciesLookup').setAttribute('aria-expanded','true');
+}
+function chooseCatalogSpecies(item){
+  if(!item)return;
+  $('genus').value=item.genus||'';$('species').value=item.species||'';$('family').value=item.family||'';
+  $('commonNameEn').value=item.commonNameEn||'';$('commonNameAf').value=item.commonNameAf||'';
+  $('family').dataset.auto='1';$('speciesLookup').value=item.scientificName||catalogDisplayName(item);
+  $('speciesLookupHint').textContent='Selected '+(item.scientificName||catalogDisplayName(item))+'. You can edit any field before saving.';
+  $('speciesSuggestions').innerHTML='';$('speciesSuggestions').classList.add('hidden');$('speciesLookup').setAttribute('aria-expanded','false');
+  refreshLists();
+}
+$('speciesLookup').addEventListener('input',e=>renderSpeciesSuggestions(e.target.value));
+$('genus').addEventListener('input',e=>{if(e.target.value.trim().length>=2)renderSpeciesSuggestions(e.target.value);});
+$('speciesSuggestions').addEventListener('click',e=>{
+  const b=e.target.closest('[data-species-choice]');if(!b)return;
+  const hit=visibleSpeciesSuggestions[Number(b.dataset.speciesChoice)];if(hit)chooseCatalogSpecies(hit.item);
+});
+document.addEventListener('click',e=>{if(!e.target.closest('.catalog-lookup')&&!e.target.closest('#genus')){$('speciesSuggestions').classList.add('hidden');$('speciesLookup').setAttribute('aria-expanded','false');}});
 function openForm(r){
   $('recordForm').reset();$('gpsMsg').textContent='';$('family').dataset.auto='';
   $('recordId').value=r?.id||'';
@@ -286,6 +373,7 @@ function openForm(r){
   $('commonNameEn').value=r?.commonNameEn||'';$('commonNameAf').value=r?.commonNameAf||'';
   $('locality').value=r?.locality||'';$('floweringSeason').value=r?.floweringSeason||'';$('plantHeight').value=r?.height||'';$('tracks').value=r?.tracks||'';$('notes').value=r?.notes||'';
   $('photo').value='';currentPhotos=[...photosOf(r||{})];renderPhotos();
+  $('speciesLookup').value='';$('speciesSuggestions').innerHTML='';$('speciesSuggestions').classList.add('hidden');$('speciesLookup').setAttribute('aria-expanded','false');$('speciesLookupHint').textContent='Search the built-in Southern African reference list, then select a result to fill in its names.';
   refreshLists();
   openModal($('recordDialog'));
 }
@@ -500,7 +588,6 @@ $('sitePhotoGrid').addEventListener('click',e=>{
   if(del){if(confirm('Delete this photograph?')){sitePhotosCur.splice(+del.dataset.del,1);renderSitePhotos();}}
   else if(view){$('photoLarge').src=sitePhotosCur[+view.dataset.view];openModal($('photoDialog'));}
 });
-$('sitePhotos').onchange=async e=>{photoTarget='site';const fs=[...e.target.files];e.target.value='';await addFiles(fs);};
 $('siteTakePhoto').onclick=()=>openCamera('site');
 function getGps(){return new Promise((resolve,reject)=>{if(!navigator.geolocation){reject(new Error('unavailable'));return;}navigator.geolocation.getCurrentPosition(p=>resolve({lat:+p.coords.latitude.toFixed(6),lon:+p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy||0)}),reject,{enableHighAccuracy:true,timeout:15000,maximumAge:60000});});}
 function showSiteGps(){$('siteGps').textContent=siteGpsData?gpsText(siteGpsData):(siteGpsState||'Not captured yet');}
@@ -524,7 +611,7 @@ function openSite(r){
   $('siteTown').value=r?.town||'';$('siteCountry').value=r?.country||'';
   $('siteRoles').value=r?.roles||'';$('siteNotes').value=r?.notes||'';
   $('siteDate').value=r?visitDate(r):todayISO();
-  $('sitePhotos').value='';sitePhotosCur=[...photosOf(r||{})];renderSitePhotos();
+  sitePhotosCur=[...photosOf(r||{})];renderSitePhotos();
   siteGpsData=r?.gps||null;siteGpsState='';showSiteGps();
   $('siteStamp').textContent=r?('Saved to diary: '+fmtStamp(r.capturedAt)):('Will be saved with today’s date and time ('+fmtStamp(new Date())+') and your GPS position.');
   toggleCountry();
@@ -572,7 +659,7 @@ function cultureFromCsv(r){
   return{title:r.title||'',era:r.era||'',province:r.province||'',town:r.town||'',country:r.country||'',roles:r.roles||'',notes:r.notes||'',visitDate:r.visitDate||'',capturedAt:r.capturedAt||'',gps:(isFinite(lat)&&isFinite(lon))?{lat,lon,acc:0}:null};
 }
 
-/* ---------- day report: PDF and PowerPoint ---------- */
+/* ---------- day report: PDF ---------- */
 const KCOLOR={flora:'#2e7d5b',fauna:'#9a5b23',culture:'#7a2f1b'};
 const KLABEL={flora:'Flora',fauna:'Fauna',culture:'Cultural & tourist sites'};
 const _loaded={};
@@ -598,7 +685,7 @@ function selectedEntries(){
 function updateReportCount(){
   const e=selectedEntries(),n={flora:0,fauna:0,culture:0};e.forEach(x=>n[x.kind]++);
   $('reportCount').textContent=`${plural(e.length,'entry','entries')} selected (${n.flora} flora, ${n.fauna} fauna, ${n.culture} cultural sites)`;
-  $('makePdf').disabled=$('makePptx').disabled=!e.length;
+  $('makePdf').disabled=!e.length;
 }
 ['reportFrom','reportTo','repFlora','repFauna','repCulture'].forEach(id=>$(id).addEventListener('input',updateReportCount));
 $('reportToday').onclick=()=>{$('reportFrom').value=$('reportTo').value=todayISO();updateReportCount();};
@@ -679,77 +766,24 @@ async function buildPdf(entries,meta){
   });
   return new Blob([await doc.save()],{type:'application/pdf'});
 }
-const blobToDataURL=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});
-async function buildPptx(entries,meta){
-  await loadScript('pptxgen.bundle.js');
-  const pptx=new PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='Henry van der Schyff';pptx.company=APP_NAME;pptx.title=meta.title;
-  const G='183D32',FONT='Calibri',SW=13.333;
-  const footer=s=>{s.addText(CITE,{x:0.4,y:7.08,w:10.8,h:0.3,fontSize:9,color:'7A8A82',fontFace:FONT});s.slideNumber={x:12.3,y:7.08,w:0.7,h:0.3,fontSize:10,color:'7A8A82'};};
-  const fit=(p,bx,by,bw,bh)=>{const s=Math.min(bw/p.w,bh/p.h),w=p.w*s,h=p.h*s;return{x:bx+(bw-w)/2,y:by+(bh-h)/2,w,h};};
-  let s=pptx.addSlide();s.background={color:G};
-  try{const ic=await fetch('icon-512.png').then(r=>r.blob()).then(blobToDataURL);s.addImage({data:ic,x:9.3,y:1.5,w:3.5,h:3.5});}catch{}
-  s.addText(meta.title,{x:0.7,y:1.5,w:8.4,h:1.7,fontSize:40,bold:true,color:'FFFFFF',fontFace:'Georgia',valign:'top'});
-  s.addText(meta.subtitle,{x:0.7,y:3.3,w:8.4,h:0.6,fontSize:20,color:'D6E4D9',fontFace:FONT});
-  s.addText(meta.counts,{x:0.7,y:3.95,w:8.4,h:0.5,fontSize:16,color:'E6C98E',fontFace:FONT});
-  s.addText(CITE,{x:0.7,y:6.6,w:11.8,h:0.4,fontSize:11,color:'B9CFC0',fontFace:FONT});
-  for(const e of entries){
-    const col=KCOLOR[e.kind].slice(1);
-    const imgs=[];for(const src of e.photos){const p=await prepImage(src,1200,.78);if(p)imgs.push(p);}
-    s=pptx.addSlide();s.background={color:'FFFFFF'};
-    s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:SW,h:0.45,fill:{color:col},line:{color:col}});
-    s.addText(KLABEL[e.kind].toUpperCase(),{x:0.4,y:0.05,w:9,h:0.35,fontSize:12,bold:true,color:'FFFFFF',fontFace:FONT,charSpacing:2});
-    s.addText(e.title,{x:0.4,y:0.62,w:12.5,h:0.85,fontSize:30,bold:true,italic:!!e.italic,color:G,fontFace:'Georgia',fit:'shrink',valign:'top'});
-    if(e.sub)s.addText(e.sub,{x:0.4,y:1.42,w:12.5,h:0.4,fontSize:16,color:'55655C',fontFace:FONT});
-    const rows=e.rows.filter(([,v])=>v&&String(v).trim());
-    const full=rows.map(([l,v])=>l+': '+v).join('\n');
-    const clip=(v)=>{v=String(v);return v.length>650?v.slice(0,650).trim()+'… (full text in the speaker notes)':v;};
-    const total=rows.reduce((n,[,v])=>n+String(v).length,0);
-    const fs=total>900?11:total>550?12:14;
-    const runs=[];rows.forEach(([l,v])=>{runs.push({text:l+': ',options:{bold:true,color:'55655C'}});runs.push({text:clip(v),options:{color:'222222',breakLine:true}});});
-    const hasImg=imgs.length>0;
-    if(runs.length)s.addText(runs,{x:0.4,y:1.95,w:hasImg?6.6:12.5,h:4.95,fontSize:fs,valign:'top',fontFace:FONT,paraSpaceAfter:6});
-    const X=7.3,Y=1.95,AW=5.6,AH=4.95,g=0.15,first=imgs.slice(0,4);
-    if(first.length===1){const f=fit(first[0],X,Y,AW,AH);s.addImage({data:first[0].data,...f});}
-    else if(first.length===2){const bh=(AH-g)/2;first.forEach((p,i)=>s.addImage({data:p.data,...fit(p,X,Y+i*(bh+g),AW,bh)}));}
-    else if(first.length>=3){const bw=(AW-g)/2,bh=(AH-g)/2;first.forEach((p,i)=>s.addImage({data:p.data,...fit(p,X+(i%2)*(bw+g),Y+Math.floor(i/2)*(bh+g),bw,bh)}));}
-    s.addNotes(e.title+'\n'+full);
-    footer(s);
-    for(let i=4;i<imgs.length;i+=6){
-      const sl=pptx.addSlide();sl.background={color:'FFFFFF'};
-      sl.addShape(pptx.ShapeType.rect,{x:0,y:0,w:SW,h:0.45,fill:{color:col},line:{color:col}});
-      sl.addText(KLABEL[e.kind].toUpperCase()+'  ·  PHOTOGRAPHS',{x:0.4,y:0.05,w:12,h:0.35,fontSize:12,bold:true,color:'FFFFFF',fontFace:FONT,charSpacing:2});
-      sl.addText(e.title+' (photographs)',{x:0.4,y:0.62,w:12.5,h:0.7,fontSize:24,bold:true,italic:!!e.italic,color:G,fontFace:'Georgia',fit:'shrink'});
-      const grp=imgs.slice(i,i+6),bw=(12.5-2*g)/3,bh=(5.2-g)/2;
-      grp.forEach((p,k)=>sl.addImage({data:p.data,...fit(p,0.4+(k%3)*(bw+g),1.55+Math.floor(k/3)*(bh+g),bw,bh)}));
-      footer(sl);
-    }
-  }
-  s=pptx.addSlide();s.background={color:G};
-  s.addText('Created with',{x:0.7,y:2.2,w:12,h:0.5,fontSize:20,color:'B9CFC0',fontFace:FONT});
-  s.addText(APP_NAME,{x:0.7,y:2.7,w:12,h:1.2,fontSize:34,bold:true,color:'FFFFFF',fontFace:'Georgia'});
-  s.addText('© 2026 Henry van der Schyff. All rights reserved.',{x:0.7,y:4.1,w:12,h:0.5,fontSize:16,color:'E6C98E',fontFace:FONT});
-  s.addText('Thank you for your support.',{x:0.7,y:4.7,w:12,h:0.5,fontSize:16,color:'D6E4D9',fontFace:FONT});
-  return await pptx.write({outputType:'blob'});
-}
 async function deliverFile(blob,name,mime){
   download(blob,name);
   const file=new File([blob],name,{type:mime});
   if(navigator.canShare&&navigator.canShare({files:[file]}))toast(name+' created',()=>navigator.share({files:[file],title:name}).catch(()=>{}),'Share');
   else toast(name+' saved to your downloads');
 }
-async function runReport(kind,entries,meta,btn){
+async function runReport(entries,meta,btn){
   const label=btn?btn.innerHTML:'';
   try{
     if(btn){btn.disabled=true;btn.textContent='Creating…';}
-    toast('Creating '+(kind==='pdf'?'PDF':'PowerPoint')+'…');
-    const blob=kind==='pdf'?await buildPdf(entries,meta):await buildPptx(entries,meta);
-    await deliverFile(blob,`Field-notes-${meta.slug}.${kind==='pdf'?'pdf':'pptx'}`,kind==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-  }catch(err){console.error(err);alert('The report could not be created. '+(err&&err.message?err.message:''));}
+    toast('Creating PDF…');
+    const blob=await buildPdf(entries,meta);
+    await deliverFile(blob,`Field-notes-${meta.slug}.pdf`,'application/pdf');
+  }catch(err){console.error(err);alert('The PDF report could not be created. '+(err&&err.message?err.message:''));}
   finally{if(btn){btn.innerHTML=label;}updateReportCount();}
 }
-$('makePdf').onclick=()=>{const e=selectedEntries();if(e.length)runReport('pdf',e,reportMeta(e),$('makePdf'));};
-$('makePptx').onclick=()=>{const e=selectedEntries();if(e.length)runReport('pptx',e,reportMeta(e),$('makePptx'));};
-function singleReport(entry,btn){const meta={title:entry.title,subtitle:KLABEL[entry.kind],counts:'',slug:(entry.title||'entry').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'entry'};runReport('pdf',[entry],meta,btn);}
+$('makePdf').onclick=()=>{const e=selectedEntries();if(e.length)runReport(e,reportMeta(e),$('makePdf'));};
+function singleReport(entry,btn){const meta={title:entry.title,subtitle:KLABEL[entry.kind],counts:'',slug:(entry.title||'entry').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'entry'};runReport([entry],meta,btn);}
 $('pdfOne').onclick=()=>{
   const genus=$('genus').value.trim(),species=$('species').value.trim(),cEn=$('commonNameEn').value.trim(),cAf=$('commonNameAf').value.trim();
   if(!genus&&!species&&!cEn&&!cAf&&!$('tracks').value.trim()){alert('Please enter a name first.');return;}
@@ -765,6 +799,7 @@ $('pdfSite').onclick=()=>{
 $('openDonate').onclick=()=>openModal($('donateDialog'));
 $('openGuides').onclick=()=>{renderGuides();openModal($('guidesDialog'));};
 $('openManual').onclick=()=>{renderManual();openModal($('manualDialog'));};
+$('openTerms').onclick=()=>openModal($('termsDialog'));
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-copy]');if(!b)return;
@@ -793,15 +828,17 @@ function renderGuides(){
   <p class="muted">The Western Cape guides above can also be useful in the Eastern Cape fynbos.</p>`;
 }
 function renderManual(){
-  $('manualBody').innerHTML=`<details open><summary>Getting started</summary><p>Open the app link in Chrome (Android or laptop) and wait for it to load while you have internet. Tap <strong>Install app</strong> (or the browser menu, then <strong>Install app / Add to Home screen</strong>). After that the app works 100% offline: no signal is needed in the field.</p></details>
-  <details><summary>Three sections</summary><p>Use the tabs <strong>Flora</strong>, <strong>Fauna</strong> and <strong>Culture &amp; sites</strong>. Each tab has its own list, search and filters. Tap <strong>Add</strong> to capture something new, or tap any card to edit it.</p></details>
-  <details><summary>Flora and fauna entries</summary><p>You only need one name to save: a common name (English or Afrikaans) or a genus / species. Add the family, scientific name, date, locality, flowering time and research notes now or later. Observations without a scientific name show a yellow tag, and a button lists them. <strong>Flora</strong> also has a <em>Height of plant / tree</em> box (for example 1.5 m or about 8 m). <strong>Fauna</strong> has a <em>Tracks / spoor</em> box for describing tracks, with a photo of the spoor if you have one.</p></details>
-  <details><summary>Cultural or tourist sites</summary><p>Tap <strong>Add site visit</strong>. Add photos with the camera or from your gallery (including pictures downloaded from the internet), then fill in what you know: title, historical date / era (free text such as 1854 or 19th century), the role players (one per line), and your field notes or story. Choose the <strong>province</strong> and fill in the <strong>town or city</strong>. For somewhere abroad, choose <em>Outside South Africa</em> and fill in the country. Tap <strong>Save to Diary</strong>: the entry is stored on your device with your GPS position and today's date and time.</p></details>
-  <details><summary>Photographs</summary><p>Up to 12 photos per entry. <strong>Take photo</strong> opens a live camera (allow Camera access when asked; <em>Switch camera</em> changes between back and front). Tap a photo to enlarge it, or <strong>&times;</strong> to delete it. Photo changes are kept when you save.</p></details>
-  <details><summary>GPS and time stamp</summary><p>For site visits the app asks for your location when you open a new entry. If you say no, you can still save without GPS. Use <strong>Update GPS</strong> to try again. Flora and fauna entries have an <em>Add my GPS position</em> button next to the locality.</p></details>
-  <details><summary>Printable day report (PDF or PowerPoint)</summary><p>Scroll to <strong>Printable day report</strong>. Choose the dates (it starts with today), tick the sections you want, then tap <strong>Create PDF</strong> or <strong>Create PowerPoint</strong>. The file includes your photos and cites this app. On a phone, use <strong>Share</strong> to send it. Inside any entry, the <strong>PDF</strong> button makes a one-page report for just that entry.</p></details>
-  <details><summary>Backup and moving to another device</summary><p>Your entries live only on this device. Tap <strong>Export JSON</strong> regularly and keep the file safe. To move to another phone or laptop, export on one and <strong>Import</strong> on the other. CSV files hold text only (no photos).</p></details>
-  <details><summary>Field guides and support</summary><p><strong>Field guides</strong> lists books to take along. If the app is useful to you, the <strong>Donate</strong> button shows how to support its development. Thank you.</p></details>`;
+  $('manualBody').innerHTML=`<details open><summary>Who should use this app?</summary><p><strong>Southern Africa Offline Field Log</strong> is intended for education and research: learners, teachers, students, naturalists, citizen-science recorders, field researchers, guides and anyone documenting Southern African plants, animals and cultural heritage. It is a field notebook and learning aid, not an official species authority or a replacement for expert advice.</p></details>
+  <details><summary>Getting started and offline use</summary><p>Open the app link in Chrome or Edge while online once, allow it to finish loading, then choose <strong>Install app</strong> or the browser menu’s <strong>Install / Add to Home screen</strong>. After the first successful load, the app and its built-in reference catalogue work offline. Camera and GPS permissions are controlled by your device and browser.</p></details>
+  <details><summary>Flora and fauna species catalogue</summary><p>When adding a flora or fauna observation, use <strong>Find a species in the offline catalogue</strong>. Type a genus, scientific name or common name — for example <strong>Protea</strong> — and select a suggestion. The app fills in the scientific name, family and available English and Afrikaans common names. You can edit these fields. The catalogue is a starter reference list, not a complete checklist; verify uncertain identifications with current field guides or a qualified specialist.</p></details>
+  <details><summary>Recording observations</summary><p>Choose the Flora or Fauna tab and tap <strong>Add</strong>. Record the name, date, locality, habitat and research notes. Flora entries also include flowering season and plant height. Fauna entries include a tracks / spoor field. Use <strong>Add my GPS position</strong> when appropriate. Unidentified observations can still be saved with a common name or field description and updated later.</p></details>
+  <details><summary>Cultural sites and heritage observations</summary><p>Choose <strong>Cultural sites</strong> and tap <strong>Add site visit</strong>. Photographs for this section are captured with the device camera; gallery uploads and internet-downloaded images are not offered. Record the site title, era, province or country, town, role players, visit date and field notes. Respect site rules, land access, community protocols and any restrictions on photography or recording.</p></details>
+  <details><summary>Camera, close-ups and image stabilisation</summary><p>You can keep up to 12 photographs per observation. Tap <strong>Take photo</strong> or <strong>Photograph site with camera</strong>. If the browser exposes multiple cameras, use <strong>Camera / lens</strong> to select one; a macro lens may appear if the device exposes it separately. Macro focus is offered only when supported by the camera and browser. Image stabilisation is enabled when the device exposes a compatible control; otherwise stabilisation remains device-managed. Hold the phone steady and move close only as far as the lens can focus. Camera controls vary by device and browser.</p></details>
+  <details><summary>GPS, privacy and sensitive locations</summary><p>GPS is optional. If permission is denied or a signal is unavailable, you can still save an entry without coordinates. Be careful about recording or sharing precise locations for threatened species, private land, archaeological resources or culturally sensitive places. Ask permission before photographing people or restricted sites.</p></details>
+  <details><summary>PDF reports and backups</summary><p>Use <strong>Printable day report</strong> to select dates and sections, then create a PDF. Each entry also has its own PDF button. Your observations and photographs are stored in this browser on this device. Export a JSON backup regularly and store it somewhere safe. Import the backup on another device to restore your records. CSV exports contain text only, not photographs.</p></details>
+  <details><summary>Terms, copyright and third-party licences</summary><p>This app is for educational and research use. Do not copy, duplicate, repackage or redistribute the app’s protected original materials without written permission. Your own field records remain yours. Third-party software and assets remain governed by their own licence agreements; retain and respect all notices in <strong>THIRD-PARTY-LICENSES.txt</strong>. Read the full <button type="button" class="textlink" id="manualTermsLink">Terms &amp; conditions</button> before use.</p></details>
+  <details><summary>Field guides and support</summary><p>The Field guides button lists suggested books for further identification and research. These references are not bundled into the app. If the app is useful to you, the Donate button shows how to support its development.</p></details>`;
+  $('manualTermsLink').onclick=()=>openModal($('termsDialog'));
 }
 
 /* ---------- install button (Chrome / Edge on laptop, Chrome on Android) ---------- */
