@@ -201,8 +201,10 @@ $('photo').onchange=async e=>{photoTarget='rec';const fs=[...e.target.files];e.t
 $('camNative').onchange=async e=>{const fs=[...e.target.files];e.target.value='';await addFiles(fs);if(fs.length){$('cameraDialog').close();}};
 
 /* ---------- in-app camera with capability-aware lens/focus controls ---------- */
-let camStream=null,camFacing='environment',camShots=0,camDeviceList=[];
-function stopCamera(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}const v=$('camVideo');v.srcObject=null;$('camShoot').disabled=true;}
+let camStream=null,camFacing='environment',camShots=0,camDeviceList=[],camTrack=null,camCaps={},macroOn=false,camTimer=null,camHist=[],shooting=false;
+let camSteadyOn=true;try{camSteadyOn=localStorage.getItem('ftgSteady')!=='0';}catch{}
+$('camSteady').checked=camSteadyOn;$('camSteady').onchange=e=>{camSteadyOn=e.target.checked;setPref('ftgSteady',camSteadyOn?'1':'0');};
+function stopCamera(){clearInterval(camTimer);camTimer=null;camHist=[];camTrack=null;camCaps={};if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}const v=$('camVideo');v.srcObject=null;$('camShoot').disabled=true;}
 function showCamErr(msg){const e=$('camErr');e.textContent=msg;e.classList.remove('hidden');$('camFallback').classList.remove('hidden');$('camShoot').disabled=true;}
 function resetCamFocus(){const sel=$('camFocus');sel.innerHTML='<option value="auto">Automatic focus</option>';sel.value='auto';}
 async function refreshCameraChoices(){
@@ -217,6 +219,7 @@ async function refreshCameraChoices(){
 }
 async function configureCameraTrack(track){
   const caps=track.getCapabilities?track.getCapabilities():{};
+  camTrack=track;camCaps=caps;
   const focus=$('camFocus');resetCamFocus();
   const modes=Array.from(caps.focusMode||[]);
   if(modes.includes('continuous'))focus.add(new Option('Continuous auto focus','continuous'));
@@ -235,6 +238,60 @@ async function configureCameraTrack(track){
   const macroText=(modes.includes('macro')||macroLens)?' Macro focus/lens is available on this device.':' Macro lens selection appears only if the device and browser expose it.';
   $('camEnhanceStatus').textContent=stabilizationText+macroText;
   focus.onchange=async()=>{const value=focus.value;if(value==='auto')return;try{await track.applyConstraints({advanced:[{focusMode:value}]});}catch{$('camEnhanceStatus').textContent='This camera does not allow that focus mode; automatic focus remains active.';}};
+  const z=caps.zoom;
+  if(z&&z.max>z.min){const zs=$('camZoom');zs.min=z.min;zs.max=z.max;zs.step=z.step||0.1;zs.value=(track.getSettings().zoom)||z.min;$('camZoomWrap').classList.remove('hidden');}else $('camZoomWrap').classList.add('hidden');
+  await applyMacro();
+}
+/* ---- macro / close-up: use a macro lens if the browser exposes one, otherwise close focus where the camera allows it ---- */
+const macroCapable=()=>{const modes=Array.from(camCaps.focusMode||[]),fd=camCaps.focusDistance;const onLens=/macro/i.test(((camDeviceList.find(d=>camTrack&&d.deviceId===camTrack.getSettings().deviceId)||{}).label)||'');return{manual:modes.includes('manual')&&!!fd&&typeof fd.min==='number',single:modes.includes('single-shot'),cont:modes.includes('continuous'),onLens,fd};};
+async function applyMacro(){
+  const m=macroCapable(),adv=[];let note='';
+  if(macroOn){
+    if(m.manual){adv.push({focusMode:'manual',focusDistance:m.fd.min});note='Close focus is on (the closest distance this camera allows). Use the slider if the picture is soft.';}
+    else if(m.single){adv.push({focusMode:'single-shot'});note='Tap the flower or animal on the picture to focus there.';}
+    else if(m.cont)adv.push({focusMode:'continuous'});
+    if(m.onLens)note='A macro lens is in use. '+note;
+  }else if(m.cont)adv.push({focusMode:'continuous'});
+  const fdw=$('camFocusDistWrap');
+  if(macroOn&&m.manual){const s=$('camFocusDist');s.min=m.fd.min;s.max=m.fd.max;s.step=m.fd.step||((m.fd.max-m.fd.min)/50)||0.01;s.value=m.fd.min;fdw.classList.remove('hidden');}else fdw.classList.add('hidden');
+  const btn=$('camMacro');btn.innerHTML='&#128269; Macro / close-up: '+(macroOn?'ON':'off');btn.classList.toggle('on',macroOn);
+  const real=m.manual||m.onLens;
+  $('camFallback').classList.toggle('hidden',!(macroOn&&!real));
+  $('camFallbackNote').textContent=macroOn&&!real?'This browser cannot switch your phone to its macro lens or close focus. For a true macro photo, open your phone\u2019s own camera app below, choose its Macro mode (flower icon), take the photo and it is added here.':'';
+  if(macroOn){
+    $('camEnhanceStatus').textContent=(note?note+' ':'')+(real||m.single?'':'Move back until the focus bar fills, and use Zoom if it is available. ')+'Rest your elbows on something and let the focus bar fill before you tap Capture.';
+  }
+  try{if(adv.length&&camTrack)await camTrack.applyConstraints({advanced:adv});}catch{}
+}
+$('camMacro').onclick=async()=>{
+  macroOn=!macroOn;
+  if(macroOn&&!$('camDevice').value){const ml=camDeviceList.find(d=>/macro/i.test(d.label||''));if(ml&&camTrack&&ml.deviceId!==camTrack.getSettings().deviceId){$('camDevice').value=ml.deviceId;return startCamera();}}
+  await applyMacro();
+};
+$('camFocusDist').oninput=async e=>{if(camTrack)try{await camTrack.applyConstraints({advanced:[{focusMode:'manual',focusDistance:+e.target.value}]});}catch{}};
+$('camZoom').oninput=async e=>{if(camTrack)try{await camTrack.applyConstraints({advanced:[{zoom:+e.target.value}]});}catch{}};
+$('camVideo').addEventListener('click',async e=>{
+  if(!camTrack)return;
+  const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height,ring=$('focusRing');
+  ring.style.left=(e.clientX-r.left)+'px';ring.style.top=(e.clientY-r.top)+'px';ring.classList.remove('hidden');ring.style.animation='none';void ring.offsetWidth;ring.style.animation='';setTimeout(()=>ring.classList.add('hidden'),900);
+  try{const adv={pointsOfInterest:[{x:Math.min(1,Math.max(0,x)),y:Math.min(1,Math.max(0,y))}]};if(Array.from(camCaps.focusMode||[]).includes('single-shot'))adv.focusMode='single-shot';await camTrack.applyConstraints({advanced:[adv]});}catch{}
+});
+/* focus / steadiness meter: average squared difference between neighbouring pixels of a small grey copy of the frame */
+const _sh=document.createElement('canvas');
+function sharpness(src,sw,sh){
+  const w=160,h=Math.max(1,Math.round(160*sh/sw));_sh.width=w;_sh.height=h;
+  const x=_sh.getContext('2d',{willReadFrequently:true});x.drawImage(src,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data,g=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++)g[i]=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2];
+  let s=0;for(let j=0;j<h-1;j++)for(let i=0;i<w-1;i++){const p=j*w+i,a1=g[p+1]-g[p],b1=g[p+w]-g[p];s+=a1*a1+b1*b1;}
+  return s/(w*h);
+}
+function liveSharpness(){
+  const v=$('camVideo');if(!v.videoWidth||v.paused)return;
+  const s=sharpness(v,v.videoWidth,v.videoHeight);camHist.push(s);if(camHist.length>14)camHist.shift();
+  const ratio=Math.min(1,s/Math.max(...camHist,1));
+  $('steadyFill').style.width=Math.round(ratio*100)+'%';$('steadyFill').className=ratio>=.85?'ok':ratio>=.6?'mid':'low';
+  $('steadyText').textContent=ratio>=.85?'Sharp and steady':(macroOn?'Move slowly closer or back…':'Hold steady…');
 }
 async function startCamera(){
   stopCamera();$('camErr').classList.add('hidden');$('camFallback').classList.add('hidden');$('camEnhanceStatus').textContent='Checking camera capabilities…';
@@ -249,26 +306,36 @@ async function startCamera(){
     const front=(track.getSettings().facingMode||camFacing)==='user';v.classList.toggle('mirror',front);
     $('camShoot').disabled=false;
     await refreshCameraChoices();
+    if(macroOn&&!$('camDevice').value){const ml=camDeviceList.find(d=>/macro/i.test(d.label||''));if(ml&&ml.deviceId!==track.getSettings().deviceId){$('camDevice').value=ml.deviceId;return startCamera();}}
     await configureCameraTrack(track);
+    camHist=[];camTimer=setInterval(liveSharpness,250);
   }catch(err){
     const n=err&&err.name;
     showCamErr(n==='NotAllowedError'||n==='SecurityError'?'Camera permission was blocked. Allow Camera access for this site, then try again.':n==='NotFoundError'||n==='OverconstrainedError'?'The selected camera is unavailable. Choose another camera or use the camera-app option below.':'The camera could not be started. Use the button below to open your camera app instead.');
   }
 }
-function openCamera(target){
-  photoTarget=target;
+function openCamera(target,macro=false){
+  photoTarget=target;macroOn=!!macro;
   if(photoArr().length>=MAX_PHOTOS){alert(`Up to ${MAX_PHOTOS} photographs can be kept per observation.`);return;}
   camShots=0;$('camCount').textContent='0';$('camDevice').value='';openModal($('cameraDialog'));startCamera();
 }
 $('takePhoto').onclick=()=>openCamera('rec');
+$('macroPhoto').onclick=()=>openCamera('rec',true);
 $('camNative').onchange=async e=>{const fs=[...e.target.files];e.target.value='';await addFiles(fs);if(fs.length){$('cameraDialog').close();}};
-$('camShoot').onclick=()=>{
-  const v=$('camVideo');if(!v.videoWidth)return;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+$('camShoot').onclick=async()=>{
+  const v=$('camVideo');if(!v.videoWidth||shooting)return;
   if(photoArr().length>=MAX_PHOTOS){alert(`Up to ${MAX_PHOTOS} photographs can be kept per observation.`);return;}
-  const s=Math.min(1,1400/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement('canvas');
-  c.width=Math.round(v.videoWidth*s);c.height=Math.round(v.videoHeight*s);c.getContext('2d').drawImage(v,0,0,c.width,c.height);
-  photoArr().push(c.toDataURL('image/jpeg',.86));refreshPhotoUI();camShots++;$('camCount').textContent=camShots;
-  const st=document.querySelector('.camstage');st.classList.add('flash');setTimeout(()=>st.classList.remove('flash'),180);
+  shooting=true;$('camShoot').disabled=true;
+  try{
+    const sc=Math.min(1,1400/Math.max(v.videoWidth,v.videoHeight)),W=Math.round(v.videoWidth*sc),H=Math.round(v.videoHeight*sc);
+    const grab=()=>{const c=document.createElement('canvas');c.width=W;c.height=H;c.getContext('2d').drawImage(v,0,0,W,H);return c;};
+    let best;
+    if(camSteadyOn){$('steadyText').textContent='Hold still: picking the sharpest frame…';let bs=-1;for(let i=0;i<6;i++){const c=grab(),s2=sharpness(c,W,H);if(s2>bs){bs=s2;best=c;}await sleep(90);}}
+    else best=grab();
+    photoArr().push(best.toDataURL('image/jpeg',.86));refreshPhotoUI();camShots++;$('camCount').textContent=camShots;
+    const st=document.querySelector('.camstage');st.classList.add('flash');setTimeout(()=>st.classList.remove('flash'),180);
+  }finally{shooting=false;$('camShoot').disabled=!camStream;}
 };
 $('camSwitch').onclick=()=>{camFacing=camFacing==='environment'?'user':'environment';$('camDevice').value='';startCamera();};
 $('camDevice').onchange=startCamera;
@@ -1031,7 +1098,7 @@ function renderManual(){
   <details><summary>Flora and fauna species catalogue</summary><p>When adding a flora or fauna observation, use <strong>Find a species in the offline catalogue</strong>. Type a genus, scientific name or common name — for example <strong>Protea</strong> — and select a suggestion. The app fills in the scientific name, family and available English and Afrikaans common names. You can edit these fields. The catalogue is a starter reference list, not a complete checklist; verify uncertain identifications with current field guides or a qualified specialist.</p></details>
   <details><summary>Recording observations</summary><p>Choose the Flora or Fauna tab and tap <strong>Add</strong>. Record the name, date, locality, habitat and research notes. Flora entries also include flowering season and plant height. Fauna entries include a tracks / spoor field. Use <strong>Add my GPS position</strong> when appropriate. Unidentified observations can still be saved with a common name or field description and updated later.</p></details>
   <details><summary>Cultural sites and heritage observations</summary><p>Choose <strong>Cultural sites</strong> and tap <strong>Add site visit</strong>. Photographs for this section are captured with the device camera; gallery uploads and internet-downloaded images are not offered. Record the site title, era, province or country, town, role players, visit date and field notes. Respect site rules, land access, community protocols and any restrictions on photography or recording.</p></details>
-  <details><summary>Camera, close-ups and image stabilisation</summary><p>You can keep up to 12 photographs per observation. Tap <strong>Take photo</strong> or <strong>Photograph site with camera</strong>. If the browser exposes multiple cameras, use <strong>Camera / lens</strong> to select one; a macro lens may appear if the device exposes it separately. Macro focus is offered only when supported by the camera and browser. Image stabilisation is enabled when the device exposes a compatible control; otherwise stabilisation remains device-managed. Hold the phone steady and move close only as far as the lens can focus. Camera controls vary by device and browser.</p></details>
+  <details><summary>Camera, macro photos and image stabilisation</summary><p>You can keep up to 12 photographs per observation. In Flora and Fauna tap <strong>Take photo</strong> for a normal photo or <strong>Macro photo</strong> for a close-up; the camera screen also has a <strong>Macro / close-up</strong> switch.</p><p><strong>How macro works:</strong> if your browser exposes a macro lens, the app switches to it. If the camera allows manual focus, the app sets it to its closest distance and shows a <em>Close-focus distance</em> slider. Many phones do not let a web page use the macro lens at all; in that case the app shows a button to open your phone&rsquo;s own camera app, where you choose its Macro mode, take the picture and it is added to the entry. Tap the picture to focus on a point, use <strong>Zoom</strong> when it appears to stay further back, and watch the <strong>focus bar</strong>: take the photo when it is full.</p><p><strong>Steady shot</strong> (on by default) takes several frames in half a second and keeps the sharpest one, which helps with shaky hands, and especially with close-ups. Image stabilisation itself is controlled by the phone, so rest your elbows or the phone on something. Camera controls vary by device and browser.</p></details>
   <details><summary>GPS, privacy and sensitive locations</summary><p>GPS is optional. If permission is denied or a signal is unavailable, you can still save an entry without coordinates. Be careful about recording or sharing precise locations for threatened species, private land, archaeological resources or culturally sensitive places. Ask permission before photographing people or restricted sites.</p></details>
   <details><summary>Reports (PDF and Word), photos and backups</summary><p>Use <strong>Day or trip report &amp; photos</strong> to choose the dates and sections. <strong>Create PDF report</strong> makes a printable PDF, and <strong>Create Word document</strong> makes an editable .docx with your entries and photographs for a day or a whole trip. Each entry also has its own PDF button.</p><p><strong>Photo folder:</strong> a web app cannot create folders in your phone’s gallery by itself. On a phone, use <strong>Save photos as ZIP</strong> (it contains folders for Flora, Fauna and Cultural sites; unzip it in your Files app), <strong>Share photos</strong>, or the <strong>Save photo</strong> button when you open a photo. On a computer with Chrome or Edge, tap <strong>Choose photo folder</strong> once: the app then saves your photos into that folder, sorted into Flora, Fauna and Cultural sites, and can do it automatically each time you save an entry.</p><p>Your observations and photographs are stored in this browser on this device. Export a JSON backup regularly and store it somewhere safe. Import the backup on another device to restore your records. CSV exports contain text only, not photographs.</p></details>
   <details><summary>Terms, copyright and third-party licences</summary><p>This app is for educational and research use. Do not copy, duplicate, repackage or redistribute the app’s protected original materials without written permission. Your own field records remain yours. Third-party software and assets remain governed by their own licence agreements; retain and respect all notices in <strong>THIRD-PARTY-LICENSES.txt</strong>. Read the full <button type="button" class="textlink" id="manualTermsLink">Terms &amp; conditions</button> before use.</p></details>

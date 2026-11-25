@@ -1,5 +1,10 @@
 # Changelog
 
+## Version 15
+
+- Added a **Macro photo** button (Flora and Fauna) and a **Macro / close-up** switch on the camera screen. It uses a macro lens when the browser exposes one, the closest manual focus (with a close-focus slider) where the camera allows it, tap-to-focus and zoom where supported, and a button to use the phone's own camera app in Macro mode when the browser cannot reach the macro lens.
+- Added **Steady shot** (keeps the sharpest of several quick frames) and a live **focus and steadiness bar** to the camera.
+
 ## Version 14
 
 - Added **Create Word document**: an editable .docx of the selected day or trip, with entries, photographs and a citation to the app.

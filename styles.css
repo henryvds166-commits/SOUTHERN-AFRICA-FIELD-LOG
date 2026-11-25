@@ -220,3 +220,18 @@ footer{flex-wrap:wrap;row-gap:6px}.copyright{flex-basis:100%;text-align:center;c
 .folderbox .muted:last-of-type{margin-bottom:6px}
 .lightbox{position:relative}
 .savephoto{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);box-shadow:0 4px 18px #0006}
+
+/* ---- macro / steady shot ---- */
+.camMacroBtn{grid-column:1/-1;background:#183d32;color:#fff;border:1px solid #456456}
+.camMacroBtn.on{background:#e6c98e;color:#183d32;border-color:#e6c98e}
+.camoptions .camchk{grid-column:1/-1;flex-direction:row;align-items:center;gap:8px;font-size:12px;font-weight:600}
+.camoptions .camrange{grid-column:1/-1}
+.camoptions input[type=range]{width:100%}
+.camsteady{grid-column:1/-1;display:flex;align-items:center;gap:10px;font-size:11px;color:#d6e4d9}
+.steadybar{flex:0 0 120px;height:8px;border-radius:6px;background:#2a4336;overflow:hidden}
+.steadybar i{display:block;height:100%;width:0;background:#e2b65f;transition:width .2s}
+.steadybar i.ok{background:#6bd08f}.steadybar i.low{background:#d9684a}
+.camstage{position:relative}.focusring{position:absolute;width:64px;height:64px;margin:-32px 0 0 -32px;border:2px solid #e6c98e;border-radius:50%;pointer-events:none;animation:ring .9s ease-out}
+@keyframes ring{from{transform:scale(1.6);opacity:.2}to{transform:scale(1);opacity:1}}
+.camfbnote{margin:0 0 8px;font-size:12px;line-height:1.45;color:#d6e4d9}
+.camoptions .hidden{display:none!important}

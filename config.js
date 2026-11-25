@@ -4,7 +4,7 @@ window.FLORA={
  "short":"Southern Africa Field Log",
  "tagline":"OFFLINE FIELD GUIDE · EDUCATION & RESEARCH",
  "hero":"Capture the day’s memories,<br>wherever you travel.",
- "footer":"Southern Africa Offline Field Log · Version 14",
+ "footer":"Southern Africa Offline Field Log · Version 15",
  "disclaimer":"An educational and research field tool",
  "copyright":"© 2026 Henry van der Schyff. All rights reserved.",
  "dbName":"flora-observations",
