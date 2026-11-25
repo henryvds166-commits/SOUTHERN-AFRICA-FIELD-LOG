@@ -211,3 +211,12 @@ footer{flex-wrap:wrap;row-gap:6px}.copyright{flex-basis:100%;text-align:center;c
 
 .section-heading-title{display:flex;align-items:center;gap:12px}.section-icon{width:44px;height:44px;flex:none}.section-heading-title .eyebrow{margin-bottom:4px}
 @media(max-width:430px){.section-icon{width:36px;height:36px}.section-heading-title{gap:8px}}
+
+/* ---- Word report and photo folder ---- */
+.photobox2{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.photobox2 h3{margin:0 0 6px;font:500 20px "Playfair Display",Georgia,serif;color:var(--green)}
+.photobox2 .muted{margin:0 0 10px}
+.folderbox{margin-top:14px;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;background:var(--paper)}
+.folderbox .muted:last-of-type{margin-bottom:6px}
+.lightbox{position:relative}
+.savephoto{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);box-shadow:0 4px 18px #0006}

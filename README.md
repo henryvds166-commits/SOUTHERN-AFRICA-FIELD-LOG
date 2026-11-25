@@ -22,9 +22,13 @@ Learners, teachers, students, naturalists, citizen-science contributors, field r
 
 The camera panel offers lens/device selection when the browser exposes multiple cameras, and macro focus only when the camera reports support. Image stabilisation is enabled only where the device/browser exposes a compatible capability; otherwise it remains device-managed. Camera support varies by browser, hardware and secure-context permissions.
 
-## PDF reports and backups
+## Reports (PDF and Word), photos and backups
 
-Choose dates and sections under **Printable day report**, then create a PDF. Each observation also has a PDF action. Export JSON regularly to back up all entries and photographs. CSV exports contain text only. To move records to another device, export JSON on one device and import it on the other.
+Choose dates and sections under **Day or trip report & photos**, then create a **PDF** or an editable **Word document (.docx)** of that day or trip, with entries, photographs and a citation to the app. Each observation also has its own PDF action.
+
+**Photos on this device:** a web app cannot create folders in a phone's gallery by itself, so the app offers: **Save photos as ZIP** (folders Flora / Fauna / Cultural and tourist sites, plus a photo-list.csv), **Share photos** (phones that support it), a **Save photo** button in the photo viewer, and, in Chrome or Edge on a computer, **Choose photo folder** so photos are saved into your own folder (optionally automatically whenever you save an entry).
+
+Export JSON regularly to back up all entries and photographs. CSV exports contain text only.
 
 ## Terms, copyright and third-party licences
 

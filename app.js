@@ -402,7 +402,7 @@ $('recordForm').onsubmit=async e=>{
   if(cur==='flora')rec.height=$('plantHeight').value.trim();
   if(cur==='fauna')rec.tracks=tr;
   try{await saveRecord(rec);}catch(err){alert('Could not save. The device storage may be full.');return;}
-  data[cur]=await allRecords();$('recordDialog').close();render();toast('Observation saved');
+  data[cur]=await allRecords();$('recordDialog').close();render();toast('Observation saved');autoSavePhotos(cur,rec);
 };
 $('deleteRecord').onclick=async()=>{
   const id=$('recordId').value;if(!id||!confirm('Delete this observation from this device?'))return;
@@ -634,7 +634,7 @@ $('siteForm').onsubmit=async e=>{
   const prev=data.culture.find(r=>r.id===id)||{};
   const rec={id,...v,capturedAt:prev.capturedAt||new Date().toISOString(),updatedAt:new Date().toISOString()};
   try{await saveRecord(rec,'culture');}catch{alert('Could not save. The device storage may be full.');return;}
-  data.culture=await allRecords('culture');$('siteDialog').close();render();toast('Saved to diary');
+  data.culture=await allRecords('culture');$('siteDialog').close();render();toast('Saved to diary');autoSavePhotos('culture',rec);
 };
 $('deleteSite').onclick=async()=>{
   const id=$('siteId').value;if(!id||!confirm('Delete this site visit from this device?'))return;
@@ -668,10 +668,10 @@ const longDate=d=>{if(!d)return'';const dt=new Date(d+'T00:00:00');return isNaN(
 function entryFromRecord(sec,r){
   if(sec==='culture'){
     const where=[r.town,r.province===PROVINCE_OUTSIDE?r.country:r.province].filter(Boolean).join(', ');
-    return{kind:'culture',title:siteName(r),italic:false,sub:where,photos:photosOf(r),
+    return{kind:'culture',id:r.id,date:visitDate(r),title:siteName(r),italic:false,sub:where,photos:photosOf(r),
       rows:[['Historical date / era',r.era],['Visited',longDate(visitDate(r))+(r.capturedAt?', '+new Date(r.capturedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'')],['GPS',gpsText(r.gps)],['Role players',r.roles],['Field notes / story',r.notes]]};
   }
-  return{kind:sec,title:sciName(r),italic:!isUnid(r),sub:commonLine(r).replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"'),photos:photosOf(r),
+  return{kind:sec,id:r.id,date:r.dateObserved||'',title:sciName(r),italic:!isUnid(r),sub:commonLine(r).replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"'),photos:photosOf(r),
     rows:[['Family',r.family],['Date observed',longDate(r.dateObserved)],['Locality / specimen',r.locality],...(sec==='flora'?[['Flowering season',r.floweringSeason],['Height of plant / tree',r.height]]:[['Tracks / spoor',r.tracks]]),['Research notes',r.notes]]};
 }
 function selectedEntries(){
@@ -686,6 +686,11 @@ function updateReportCount(){
   const e=selectedEntries(),n={flora:0,fauna:0,culture:0};e.forEach(x=>n[x.kind]++);
   $('reportCount').textContent=`${plural(e.length,'entry','entries')} selected (${n.flora} flora, ${n.fauna} fauna, ${n.culture} cultural sites)`;
   $('makePdf').disabled=!e.length;
+  const np=e.reduce((n,x)=>n+x.photos.length,0);
+  $('makeDocx').disabled=!e.length;
+  $('photoCountInfo').textContent=`${plural(np,'photograph','photographs')} in the selected entries`;
+  $('photosZip').disabled=$('photosShare').disabled=!np;
+  if(typeof updateFolderUI==='function'&&typeof photoDirHandle!=='undefined')updateFolderUI();
 }
 ['reportFrom','reportTo','repFlora','repFauna','repCulture'].forEach(id=>$(id).addEventListener('input',updateReportCount));
 $('reportToday').onclick=()=>{$('reportFrom').value=$('reportTo').value=todayISO();updateReportCount();};
@@ -795,6 +800,199 @@ $('pdfSite').onclick=()=>{
   singleReport(entryFromRecord('culture',{...v,capturedAt:data.culture.find(r=>r.id===$('siteId').value)?.capturedAt||new Date().toISOString()}),$('pdfSite'));
 };
 
+/* ---------- tiny ZIP writer (stored, no compression): used for the photo ZIP and the Word file ---------- */
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC_T[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
+function makeZip(files,mime='application/zip'){
+  const enc=new TextEncoder(),chunks=[],central=[];let off=0;
+  const u16=n=>[n&255,(n>>8)&255],u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>>24)&255];
+  const dt=new Date(),dosT=(dt.getHours()<<11)|(dt.getMinutes()<<5)|(dt.getSeconds()>>1),dosD=((dt.getFullYear()-1980)<<9)|((dt.getMonth()+1)<<5)|dt.getDate();
+  for(const f of files){
+    const nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    const lh=new Uint8Array([0x50,0x4b,3,4,...u16(20),...u16(0x0800),...u16(0),...u16(dosT),...u16(dosD),...u32(crc),...u32(sz),...u32(sz),...u16(nm.length),...u16(0)]);
+    chunks.push(lh,nm,f.data);central.push({nm,crc,sz,off});off+=lh.length+nm.length+sz;
+  }
+  const cdStart=off;let cdSize=0;
+  for(const c of central){
+    const ch=new Uint8Array([0x50,0x4b,1,2,...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(dosT),...u16(dosD),...u32(c.crc),...u32(c.sz),...u32(c.sz),...u16(c.nm.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(c.off)]);
+    chunks.push(ch,c.nm);cdSize+=ch.length+c.nm.length;
+  }
+  chunks.push(new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u16(central.length),...u16(central.length),...u32(cdSize),...u32(cdStart),0,0]));
+  return new Blob(chunks,{type:mime});
+}
+
+/* ---------- Word document (.docx) of the selected day or trip ---------- */
+const DOCX_MIME='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const xmlEsc=s=>String(s??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function wRun(text,o={}){
+  const pr=(o.b?'<w:b/>':'')+(o.i?'<w:i/>':'')+(o.color?`<w:color w:val="${o.color}"/>`:'')+(o.sz?`<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>`:'');
+  const inner=String(text??'').split(/\r?\n/).map((p,i)=>(i?'<w:br/>':'')+`<w:t xml:space="preserve">${xmlEsc(p)}</w:t>`).join('');
+  return `<w:r>${pr?`<w:rPr>${pr}</w:rPr>`:''}${inner}</w:r>`;
+}
+function wPara(content,o={}){
+  const pr=(o.style?`<w:pStyle w:val="${o.style}"/>`:'')+(o.keep?'<w:keepNext/>':'')+(o.border?`<w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="${o.border}"/></w:pBdr>`:'')+(o.fill?`<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>`:'')+((o.before!=null||o.after!=null)?`<w:spacing w:before="${o.before||0}" w:after="${o.after==null?80:o.after}"/>`:'')+(o.jc?`<w:jc w:val="${o.jc}"/>`:'');
+  return `<w:p>${pr?`<w:pPr>${pr}</w:pPr>`:''}${content}</w:p>`;
+}
+function wCell(width,paras,o={}){
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${o.fill?`<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>`:''}${o.mar?`<w:tcMar><w:top w:w="${o.mar[0]}" w:type="dxa"/><w:left w:w="${o.mar[1]}" w:type="dxa"/><w:bottom w:w="${o.mar[2]}" w:type="dxa"/><w:right w:w="${o.mar[3]}" w:type="dxa"/></w:tcMar>`:''}</w:tcPr>${paras||'<w:p/>'}</w:tc>`;
+}
+function wTable(widths,rows,o={}){
+  const total=widths.reduce((a,b)=>a+b,0);
+  const borders=o.lines?`<w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="DCE5DF"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="DCE5DF"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="DCE5DF"/></w:tblBorders>`:'';
+  return `<w:tbl><w:tblPr><w:tblW w:w="${total}" w:type="dxa"/>${borders}<w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map(w=>`<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${rows.map(r=>`<w:tr><w:trPr><w:cantSplit/></w:trPr>${r}</w:tr>`).join('')}</w:tbl>`;
+}
+async function buildDocx(entries,meta){
+  const PAGEW=9638,media=[],rels=[];let dn=1;
+  const imgRun=(p,maxW,maxH,alt)=>{
+    const asp=p.w/p.h;let w=Math.min(maxW,maxH*asp),h=w/asp;
+    const cx=Math.round(w*914400),cy=Math.round(h*914400),id=dn++,rid='rIdImg'+id;
+    media.push({name:`image${id}.jpeg`,bytes:dataToBytes(p.data)});
+    rels.push(`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${id}.jpeg"/>`);
+    return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Picture ${id}" descr="${xmlEsc(alt)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="image${id}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  };
+  let body='';
+  // cover banner
+  const banner=wPara(wRun(meta.title,{b:1,color:'FFFFFF',sz:52}),{after:60})+wPara(wRun(meta.subtitle,{color:'D6E4D9',sz:26}),{after:40})+(meta.counts?wPara(wRun(meta.counts,{color:'E6C98E',sz:21}),{after:0}):'');
+  body+=wTable([PAGEW],[wCell(PAGEW,banner,{fill:'183D32',mar:[240,320,240,320]})]);
+  body+=wPara('',{after:120});
+  let last=null;
+  for(const e of entries){
+    if(e.kind!==last){body+=wPara(wRun(KLABEL[e.kind].toUpperCase(),{b:1,color:'FFFFFF',sz:21}),{style:'Heading1',keep:1,fill:KCOLOR[e.kind].slice(1),before:240,after:120});last=e.kind;}
+    body+=wPara(wRun(e.title,{i:e.italic,b:1,color:'183D32',sz:30}),{style:'Heading2',keep:1});
+    if(e.sub)body+=wPara(wRun(e.sub,{color:'55655C',sz:21}),{keep:1,after:80});
+    const rows=e.rows.filter(([,v])=>v&&String(v).trim());
+    if(rows.length)body+=wTable([2300,PAGEW-2300],rows.map(([l,v])=>`<w:tc><w:tcPr><w:tcW w:w="2300" w:type="dxa"/></w:tcPr>${wPara(wRun(l,{b:1,color:'55655C',sz:18}),{after:0,keep:1})}</w:tc><w:tc><w:tcPr><w:tcW w:w="${PAGEW-2300}" w:type="dxa"/></w:tcPr>${wPara(wRun(v,{sz:20}),{after:0,keep:1})}</w:tc>`),{lines:1});
+    const imgs=[];for(const src of e.photos){const p=await prepImage(src,1000,.78);if(p)imgs.push(p);}
+    if(imgs.length){
+      const cols=imgs.length===1?1:imgs.length===2?2:3,cw=Math.floor(PAGEW/cols),maxW=cw/1440-0.15,maxH=cols===1?3.6:cols===2?2.7:2.1;
+      const trs=[];
+      for(let i=0;i<imgs.length;i+=cols){
+        let cells='';
+        for(let j=0;j<cols;j++){const p=imgs[i+j];cells+=wCell(cw,p?wPara(imgRun(p,maxW,maxH,e.title+' photograph '+(i+j+1)),{after:0,jc:cols===1?'center':'left'}):'<w:p/>');}
+        trs.push(cells);
+      }
+      body+=wPara('',{after:40,keep:1})+wTable(Array(cols).fill(cw),trs);
+    }
+    body+=wPara('',{border:'DCE5DF',after:160});
+  }
+  const NS='xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  const X0='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const doc=`${X0}<w:document ${NS}><w:body>${body}<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const fr=(t,x='')=>`<w:r><w:rPr><w:color w:val="7A8A82"/><w:sz w:val="16"/></w:rPr>${x}<w:t xml:space="preserve">${xmlEsc(t)}</w:t></w:r>`;
+  const fld=(ins,v)=>`<w:fldSimple w:instr=" ${ins} "><w:r><w:rPr><w:color w:val="7A8A82"/><w:sz w:val="16"/></w:rPr><w:t>${v}</w:t></w:r></w:fldSimple>`;
+  const footer=`${X0}<w:ftr ${NS}><w:p><w:pPr><w:pStyle w:val="Footer"/><w:tabs><w:tab w:val="right" w:pos="${PAGEW}"/></w:tabs></w:pPr>${fr(CITE)}<w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:tab/></w:r>${fr('Page ')}${fld('PAGE','1')}${fr(' of ')}${fld('NUMPAGES','1')}</w:p></w:ftr>`;
+  const styles=`${X0}<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="21"/><w:szCs w:val="21"/><w:lang w:val="en-ZA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="22"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="160" w:after="40"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:color w:val="183D32"/><w:sz w:val="30"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:tabs><w:tab w:val="center" w:pos="4819"/><w:tab w:val="right" w:pos="9638"/></w:tabs><w:spacing w:after="0"/></w:pPr></w:style></w:styles>`;
+  const ct=`${X0}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
+  const rootRels=`${X0}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`;
+  const docRels=`${X0}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>${rels.join('')}</Relationships>`;
+  const core=`${X0}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEsc(meta.title)}</dc:title><dc:creator>Henry van der Schyff</dc:creator><cp:lastModifiedBy>${xmlEsc(APP_NAME)}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().replace(/\.\d+Z$/,'Z')}</dcterms:created></cp:coreProperties>`;
+  const appx=`${X0}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>${xmlEsc(APP_NAME)}</Application></Properties>`;
+  const enc=new TextEncoder(),t=s=>enc.encode(s);
+  const files=[{name:'[Content_Types].xml',data:t(ct)},{name:'_rels/.rels',data:t(rootRels)},{name:'docProps/core.xml',data:t(core)},{name:'docProps/app.xml',data:t(appx)},{name:'word/document.xml',data:t(doc)},{name:'word/_rels/document.xml.rels',data:t(docRels)},{name:'word/styles.xml',data:t(styles)},{name:'word/footer1.xml',data:t(footer)},...media.map(m=>({name:'word/media/'+m.name,data:m.bytes}))];
+  return makeZip(files,DOCX_MIME);
+}
+async function runDocx(entries,meta,btn){
+  const label=btn.innerHTML;
+  try{
+    btn.disabled=true;btn.textContent='Creating…';toast('Creating Word document…');
+    await deliverFile(await buildDocx(entries,meta),`Field-notes-${meta.slug}.docx`,DOCX_MIME);
+  }catch(err){console.error(err);alert('The Word document could not be created. '+(err&&err.message?err.message:''));}
+  finally{btn.innerHTML=label;updateReportCount();}
+}
+$('makeDocx').onclick=()=>{const e=selectedEntries();if(e.length)runDocx(e,reportMeta(e),$('makeDocx'));};
+
+/* ---------- photos on this device: ZIP with folders, share sheet, or a chosen folder (Chrome / Edge on a computer) ---------- */
+const PHOTO_FOLDER={flora:'Flora',fauna:'Fauna',culture:'Cultural and tourist sites'};
+const ROOT_FOLDER='Southern Africa Field Log Photos';
+const slugName=s=>String(s||'entry').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'entry';
+function photoFileList(entries){
+  const out=[];
+  for(const e of entries){
+    const base=`${e.date||'no-date'}_${slugName(e.title)}${e.id?'_'+String(e.id).slice(0,6):''}`;
+    e.photos.forEach((src,i)=>{
+      const m=/^data:(image\/[a-z0-9.+-]+);base64,/i.exec(src)||[];const mime=(m[1]||'image/jpeg').toLowerCase();
+      const ext=mime==='image/png'?'png':mime==='image/webp'?'webp':'jpg';
+      out.push({folder:PHOTO_FOLDER[e.kind],name:`${base}_${i+1}.${ext}`,mime,data:src,title:e.title,date:e.date||'',kind:e.kind});
+    });
+  }
+  return out;
+}
+async function savePhotosZip(){
+  const list=photoFileList(selectedEntries());
+  if(!list.length){alert('There are no photographs in the selected entries.');return;}
+  const csvq=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const csv='\uFEFFfile,section,date,entry\r\n'+list.map(f=>[f.folder+'/'+f.name,PHOTO_FOLDER[f.kind],f.date,f.title].map(csvq).join(',')).join('\r\n')+'\r\n';
+  const enc=new TextEncoder();
+  const files=list.map(f=>({name:`${ROOT_FOLDER}/${f.folder}/${f.name}`,data:dataToBytes(f.data)}));
+  files.push({name:`${ROOT_FOLDER}/photo-list.csv`,data:enc.encode(csv)});
+  const meta=reportMeta(selectedEntries());
+  await deliverFile(makeZip(files),`Field-photos-${meta.slug}.zip`,'application/zip');
+}
+$('photosZip').onclick=async()=>{const b=$('photosZip'),l=b.innerHTML;b.disabled=true;b.textContent='Creating…';try{await savePhotosZip();}catch(err){console.error(err);alert('The ZIP file could not be created. '+(err&&err.message?err.message:''));}finally{b.innerHTML=l;updateReportCount();}};
+const canShareFiles=()=>{try{return !!(navigator.canShare&&navigator.canShare({files:[new File([new Uint8Array(1)],'x.jpg',{type:'image/jpeg'})]}));}catch{return false;}};
+if(canShareFiles())$('photosShare').classList.remove('hidden');
+$('photosShare').onclick=async()=>{
+  const list=photoFileList(selectedEntries());if(!list.length)return;
+  const files=list.slice(0,30).map(f=>new File([dataToBytes(f.data)],f.name,{type:f.mime}));
+  try{await navigator.share({files,title:'Field Log photos'});if(list.length>30)toast('Shared the first 30 photos. Use the ZIP button for all of them.');}catch(err){if(err&&err.name!=='AbortError')alert('Sharing was not possible: '+(err.message||err));}
+};
+/* chosen folder (File System Access API) */
+let photoDirHandle=null;
+const FSA=typeof window.showDirectoryPicker==='function';
+function kvDB(){return new Promise((res,rej)=>{const r=indexedDB.open('ftg-settings',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function kvGet(k){const d=await kvDB();return new Promise((res,rej)=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
+async function kvSet(k,v){const d=await kvDB();return new Promise((res,rej)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error);});}
+async function dirPermission(request){
+  if(!photoDirHandle)return false;const o={mode:'readwrite'};
+  try{if((await photoDirHandle.queryPermission(o))==='granted')return true;if(request&&(await photoDirHandle.requestPermission(o))==='granted')return true;}catch{}
+  return false;
+}
+async function updateFolderUI(){
+  if(!FSA)return;
+  const ok=photoDirHandle?await dirPermission(false):false;
+  $('folderStatus').textContent=photoDirHandle?`Folder: “${photoDirHandle.name}”, photos go into “${ROOT_FOLDER}” inside it.${ok?'':' Tap Save photos to folder to allow access again.'}`:'No folder chosen yet.';
+  $('saveToFolder').disabled=!photoDirHandle||!selectedEntries().some(e=>e.photos.length);
+  $('autoSave').disabled=!photoDirHandle;
+}
+async function loadDirHandle(){try{photoDirHandle=(await kvGet('photoDir'))||null;}catch{photoDirHandle=null;}$('autoSave').checked=photoDirHandle&&localStorage.getItem('ftgAutoSave')==='1';updateFolderUI();}
+$('chooseFolder').onclick=async()=>{
+  try{photoDirHandle=await window.showDirectoryPicker({id:'ftg-photos',mode:'readwrite'});await kvSet('photoDir',photoDirHandle);toast('Folder chosen: '+photoDirHandle.name);updateFolderUI();}
+  catch(err){if(err&&err.name!=='AbortError')alert('The folder could not be chosen: '+(err.message||err));}
+};
+async function writePhotos(list){
+  if(!(await dirPermission(true)))throw new Error('Access to the folder was not allowed.');
+  const root=await photoDirHandle.getDirectoryHandle(ROOT_FOLDER,{create:true});let saved=0,skipped=0;
+  for(const f of list){
+    const d=await root.getDirectoryHandle(f.folder,{create:true});
+    let exists=false;try{await d.getFileHandle(f.name);exists=true;}catch{}
+    if(exists){skipped++;continue;}
+    const w=await (await d.getFileHandle(f.name,{create:true})).createWritable();await w.write(dataToBytes(f.data));await w.close();saved++;
+  }
+  return{saved,skipped};
+}
+$('saveToFolder').onclick=async()=>{
+  const list=photoFileList(selectedEntries());if(!list.length)return;
+  const b=$('saveToFolder'),l=b.innerHTML;b.disabled=true;b.textContent='Saving…';
+  try{const r=await writePhotos(list);toast(`${r.saved} photo${r.saved===1?'':'s'} saved${r.skipped?`, ${r.skipped} already in the folder`:''}`);}
+  catch(err){alert('The photos could not be saved to the folder. '+(err&&err.message?err.message:''));}
+  finally{b.innerHTML=l;updateFolderUI();}
+};
+$('autoSave').onchange=e=>setPref('ftgAutoSave',e.target.checked?'1':'0');
+async function autoSavePhotos(sec,rec){
+  try{
+    if(!FSA||!photoDirHandle||localStorage.getItem('ftgAutoSave')!=='1'||!(rec.photos||[]).length)return;
+    const list=photoFileList([entryFromRecord(sec,rec)]);
+    const r=await writePhotos(list);if(r.saved)toast(`${r.saved} photo${r.saved===1?'':'s'} also saved to your folder`);
+  }catch{toast('Entry saved. Photos could not be copied to your folder (tap Save photos to folder to allow access).');}
+}
+if(FSA){$('folderBox').classList.remove('hidden');loadDirHandle();}else $('folderNote').classList.remove('hidden');
+/* save the photo you are looking at */
+$('savePhoto').onclick=()=>{
+  const src=$('photoLarge').src,m=/^data:(image\/[a-z]+);/i.exec(src)||[],mime=m[1]||'image/jpeg';
+  download(new Blob([dataToBytes(src)],{type:mime}),`field-log-photo-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,14)}.${mime==='image/png'?'png':'jpg'}`);
+  toast('Photo saved to your downloads');
+};
+
 /* ---------- donate, field guides, user manual ---------- */
 $('openDonate').onclick=()=>openModal($('donateDialog'));
 $('openGuides').onclick=()=>{renderGuides();openModal($('guidesDialog'));};
@@ -835,7 +1033,7 @@ function renderManual(){
   <details><summary>Cultural sites and heritage observations</summary><p>Choose <strong>Cultural sites</strong> and tap <strong>Add site visit</strong>. Photographs for this section are captured with the device camera; gallery uploads and internet-downloaded images are not offered. Record the site title, era, province or country, town, role players, visit date and field notes. Respect site rules, land access, community protocols and any restrictions on photography or recording.</p></details>
   <details><summary>Camera, close-ups and image stabilisation</summary><p>You can keep up to 12 photographs per observation. Tap <strong>Take photo</strong> or <strong>Photograph site with camera</strong>. If the browser exposes multiple cameras, use <strong>Camera / lens</strong> to select one; a macro lens may appear if the device exposes it separately. Macro focus is offered only when supported by the camera and browser. Image stabilisation is enabled when the device exposes a compatible control; otherwise stabilisation remains device-managed. Hold the phone steady and move close only as far as the lens can focus. Camera controls vary by device and browser.</p></details>
   <details><summary>GPS, privacy and sensitive locations</summary><p>GPS is optional. If permission is denied or a signal is unavailable, you can still save an entry without coordinates. Be careful about recording or sharing precise locations for threatened species, private land, archaeological resources or culturally sensitive places. Ask permission before photographing people or restricted sites.</p></details>
-  <details><summary>PDF reports and backups</summary><p>Use <strong>Printable day report</strong> to select dates and sections, then create a PDF. Each entry also has its own PDF button. Your observations and photographs are stored in this browser on this device. Export a JSON backup regularly and store it somewhere safe. Import the backup on another device to restore your records. CSV exports contain text only, not photographs.</p></details>
+  <details><summary>Reports (PDF and Word), photos and backups</summary><p>Use <strong>Day or trip report &amp; photos</strong> to choose the dates and sections. <strong>Create PDF report</strong> makes a printable PDF, and <strong>Create Word document</strong> makes an editable .docx with your entries and photographs for a day or a whole trip. Each entry also has its own PDF button.</p><p><strong>Photo folder:</strong> a web app cannot create folders in your phone’s gallery by itself. On a phone, use <strong>Save photos as ZIP</strong> (it contains folders for Flora, Fauna and Cultural sites; unzip it in your Files app), <strong>Share photos</strong>, or the <strong>Save photo</strong> button when you open a photo. On a computer with Chrome or Edge, tap <strong>Choose photo folder</strong> once: the app then saves your photos into that folder, sorted into Flora, Fauna and Cultural sites, and can do it automatically each time you save an entry.</p><p>Your observations and photographs are stored in this browser on this device. Export a JSON backup regularly and store it somewhere safe. Import the backup on another device to restore your records. CSV exports contain text only, not photographs.</p></details>
   <details><summary>Terms, copyright and third-party licences</summary><p>This app is for educational and research use. Do not copy, duplicate, repackage or redistribute the app’s protected original materials without written permission. Your own field records remain yours. Third-party software and assets remain governed by their own licence agreements; retain and respect all notices in <strong>THIRD-PARTY-LICENSES.txt</strong>. Read the full <button type="button" class="textlink" id="manualTermsLink">Terms &amp; conditions</button> before use.</p></details>
   <details><summary>Field guides and support</summary><p>The Field guides button lists suggested books for further identification and research. These references are not bundled into the app. If the app is useful to you, the Donate button shows how to support its development.</p></details>`;
   $('manualTermsLink').onclick=()=>openModal($('termsDialog'));

@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 14
+
+- Added **Create Word document**: an editable .docx of the selected day or trip, with entries, photographs and a citation to the app.
+- Added **Photos on this device**: save photos as a ZIP with folders (Flora, Fauna, Cultural and tourist sites), share them, or (Chrome / Edge on a computer) choose a folder and have the app save photos into it automatically. A **Save photo** button was added to the photo viewer.
+- The report section is now called **Day or trip report & photos**.
+
 ## Version 13
 
 - Added an **Independent project** clause (clause 1) to the Terms & conditions: the app is authored and developed by Henry van der Schyff and is not an official government, university, conservation-agency or institutional product; no affiliation, sponsorship or endorsement is implied. The remaining clauses were renumbered 2 to 8.

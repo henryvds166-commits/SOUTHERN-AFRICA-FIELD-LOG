@@ -1,5 +1,5 @@
 /* Offline support: caches the app files so it opens without internet. Bump VERSION when you change any file. */
-const VERSION='southern-africa-field-log-v13';
+const VERSION='southern-africa-field-log-v14';
 const SHELL=['./','index.html','styles.css','app.js','config.js','species-data.js','field-guide-hero.png','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','icon-maskable-512.png','pdf-lib.min.js'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(SHELL)));});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
