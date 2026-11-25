@@ -148,7 +148,7 @@
     <div class="photoempty" id="photoEmpty">No photographs yet</div>
     <div class="photobtns">
      <button type="button" class="btn secondary" id="takePhoto">&#128247; Take photo</button>
-     <button type="button" class="btn secondary" id="macroPhoto">&#128269; Macro photo</button>
+     <button type="button" class="btn secondary macro-photo-btn" id="macroPhoto">&#128269; Macro photo</button>
      <label class="btn secondary filebutton">&#128444; Add photos<input id="photo" type="file" accept="image/*" multiple></label>
      <button type="button" class="btn danger hidden" id="removeAllPhotos">Delete all photos</button>
     </div>
@@ -252,6 +252,7 @@
   <label id="camDeviceWrap">Camera / lens<select id="camDevice"><option value="">Automatic rear camera</option></select></label>
   <label id="camFocusWrap">Focus<select id="camFocus"><option value="auto">Automatic focus</option></select></label>
   <button type="button" class="btn secondary camMacroBtn" id="camMacro">&#128269; Macro / close-up: off</button>
+  <button type="button" class="btn secondary camMacroSaveBtn" id="camMacroSave" disabled>&#128190; Save macro photo</button>
   <label class="camrange hidden" id="camFocusDistWrap">Close-focus distance (move to the sharpest)<input type="range" id="camFocusDist" min="0" max="1" step="0.01" value="0"></label>
   <label class="camrange hidden" id="camZoomWrap">Zoom (lets you stay further back for a sharp close-up)<input type="range" id="camZoom" min="1" max="1" step="0.1" value="1"></label>
   <label class="camchk"><input type="checkbox" id="camSteady" checked> Steady shot: keep the sharpest of several quick frames</label>

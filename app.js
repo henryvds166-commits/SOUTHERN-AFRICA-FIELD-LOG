@@ -308,7 +308,7 @@ async function startCamera(){
     await refreshCameraChoices();
     if(macroOn&&!$('camDevice').value){const ml=camDeviceList.find(d=>/macro/i.test(d.label||''));if(ml&&ml.deviceId!==track.getSettings().deviceId){$('camDevice').value=ml.deviceId;return startCamera();}}
     await configureCameraTrack(track);
-    camHist=[];camTimer=setInterval(liveSharpness,250);
+    camHist=[];camTimer=setInterval(liveSharpness,250);$('camMacroSave').disabled=false;
   }catch(err){
     const n=err&&err.name;
     showCamErr(n==='NotAllowedError'||n==='SecurityError'?'Camera permission was blocked. Allow Camera access for this site, then try again.':n==='NotFoundError'||n==='OverconstrainedError'?'The selected camera is unavailable. Choose another camera or use the camera-app option below.':'The camera could not be started. Use the button below to open your camera app instead.');
@@ -323,6 +323,7 @@ $('takePhoto').onclick=()=>openCamera('rec');
 $('macroPhoto').onclick=()=>openCamera('rec',true);
 $('camNative').onchange=async e=>{const fs=[...e.target.files];e.target.value='';await addFiles(fs);if(fs.length){$('cameraDialog').close();}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+$('camMacroSave').onclick=()=>{$('camShoot').click();};
 $('camShoot').onclick=async()=>{
   const v=$('camVideo');if(!v.videoWidth||shooting)return;
   if(photoArr().length>=MAX_PHOTOS){alert(`Up to ${MAX_PHOTOS} photographs can be kept per observation.`);return;}
@@ -335,7 +336,7 @@ $('camShoot').onclick=async()=>{
     else best=grab();
     photoArr().push(best.toDataURL('image/jpeg',.86));refreshPhotoUI();camShots++;$('camCount').textContent=camShots;
     const st=document.querySelector('.camstage');st.classList.add('flash');setTimeout(()=>st.classList.remove('flash'),180);
-  }finally{shooting=false;$('camShoot').disabled=!camStream;}
+  }finally{shooting=false;$('camShoot').disabled=!camStream;$('camMacroSave').disabled=!camStream;}
 };
 $('camSwitch').onclick=()=>{camFacing=camFacing==='environment'?'user':'environment';$('camDevice').value='';startCamera();};
 $('camDevice').onchange=startCamera;

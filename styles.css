@@ -235,3 +235,25 @@ footer{flex-wrap:wrap;row-gap:6px}.copyright{flex-basis:100%;text-align:center;c
 @keyframes ring{from{transform:scale(1.6);opacity:.2}to{transform:scale(1);opacity:1}}
 .camfbnote{margin:0 0 8px;font-size:12px;line-height:1.45;color:#d6e4d9}
 .camoptions .hidden{display:none!important}
+
+
+/* Compact macro control with an adjacent quick-save action */
+.photobtns .macro-photo-btn{padding:6px 10px;min-height:34px;font-size:.82rem;line-height:1.15}
+.photobtns .photo-save-btn{padding:6px 12px;min-height:34px;font-size:.85rem;line-height:1.15}
+
+
+/* Compact macro controls inside the camera popup */
+.camoptions .camMacroBtn,
+.camoptions .camMacroSaveBtn{
+  grid-column:auto;
+  width:auto;
+  min-height:32px;
+  padding:5px 9px;
+  font-size:11px;
+  line-height:1.2;
+}
+.camoptions .camMacroSaveBtn{background:#e6c98e;color:#183d32;border:1px solid #e6c98e}
+.camoptions .camMacroSaveBtn:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:480px){
+  .camoptions .camMacroBtn,.camoptions .camMacroSaveBtn{font-size:10px;padding:5px 7px}
+}
