@@ -254,12 +254,12 @@ async function applyMacro(){
   }else if(m.cont)adv.push({focusMode:'continuous'});
   const fdw=$('camFocusDistWrap');
   if(macroOn&&m.manual){const s=$('camFocusDist');s.min=m.fd.min;s.max=m.fd.max;s.step=m.fd.step||((m.fd.max-m.fd.min)/50)||0.01;s.value=m.fd.min;fdw.classList.remove('hidden');}else fdw.classList.add('hidden');
-  const btn=$('camMacro');btn.innerHTML='&#128269; Macro / close-up: '+(macroOn?'ON':'off');btn.classList.toggle('on',macroOn);
+  const btn=$('camMacro');btn.innerHTML='&#128269; Macro: '+(macroOn?'ON':'off');btn.classList.toggle('on',macroOn);
   const real=m.manual||m.onLens;
   $('camFallback').classList.toggle('hidden',!(macroOn&&!real));
   $('camFallbackNote').textContent=macroOn&&!real?'This browser cannot switch your phone to its macro lens or close focus. For a true macro photo, open your phone\u2019s own camera app below, choose its Macro mode (flower icon), take the photo and it is added here.':'';
   if(macroOn){
-    $('camEnhanceStatus').textContent=(note?note+' ':'')+(real||m.single?'':'Move back until the focus bar fills, and use Zoom if it is available. ')+'Rest your elbows on something and let the focus bar fill before you tap Capture.';
+    $('camEnhanceStatus').textContent=(note?note+' ':'')+(real||m.single?'':'Move back until the focus bar fills, and use Zoom if it is available. ')+'Rest your elbows on something and let the focus bar fill, then tap Save photo.';
   }
   try{if(adv.length&&camTrack)await camTrack.applyConstraints({advanced:adv});}catch{}
 }
@@ -308,7 +308,7 @@ async function startCamera(){
     await refreshCameraChoices();
     if(macroOn&&!$('camDevice').value){const ml=camDeviceList.find(d=>/macro/i.test(d.label||''));if(ml&&ml.deviceId!==track.getSettings().deviceId){$('camDevice').value=ml.deviceId;return startCamera();}}
     await configureCameraTrack(track);
-    camHist=[];camTimer=setInterval(liveSharpness,250);$('camMacroSave').disabled=false;
+    camHist=[];camTimer=setInterval(liveSharpness,250);
   }catch(err){
     const n=err&&err.name;
     showCamErr(n==='NotAllowedError'||n==='SecurityError'?'Camera permission was blocked. Allow Camera access for this site, then try again.':n==='NotFoundError'||n==='OverconstrainedError'?'The selected camera is unavailable. Choose another camera or use the camera-app option below.':'The camera could not be started. Use the button below to open your camera app instead.');
@@ -323,7 +323,17 @@ $('takePhoto').onclick=()=>openCamera('rec');
 $('macroPhoto').onclick=()=>openCamera('rec',true);
 $('camNative').onchange=async e=>{const fs=[...e.target.files];e.target.value='';await addFiles(fs);if(fs.length){$('cameraDialog').close();}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-$('camMacroSave').onclick=()=>{$('camShoot').click();};
+let camCopyOn=false;try{camCopyOn=localStorage.getItem('ftgCamCopy')==='1';}catch{}
+$('camCopy').checked=camCopyOn;$('camCopy').onchange=e=>setPref('ftgCamCopy',e.target.checked?'1':'0');
+/* optional extra copy of each saved photo: into the chosen photo folder (computer) or the Downloads folder */
+async function saveCopyToDevice(dataUrl){
+  const stamp=new Date().toISOString().replace(/[-:T]/g,'').slice(0,14),name=`${stamp.slice(0,8)}_${stamp.slice(8)}_${macroOn?'macro':'photo'}.jpg`;
+  const folder=photoTarget==='site'?'Cultural and tourist sites':(cur==='fauna'?'Fauna':'Flora');
+  try{
+    if(FSA&&photoDirHandle&&await dirPermission(true)){await writePhotos([{folder,name,data:dataUrl}]);return;}
+  }catch{}
+  download(new Blob([dataToBytes(dataUrl)],{type:'image/jpeg'}),name);
+}
 $('camShoot').onclick=async()=>{
   const v=$('camVideo');if(!v.videoWidth||shooting)return;
   if(photoArr().length>=MAX_PHOTOS){alert(`Up to ${MAX_PHOTOS} photographs can be kept per observation.`);return;}
@@ -334,9 +344,12 @@ $('camShoot').onclick=async()=>{
     let best;
     if(camSteadyOn){$('steadyText').textContent='Hold still: picking the sharpest frame…';let bs=-1;for(let i=0;i<6;i++){const c=grab(),s2=sharpness(c,W,H);if(s2>bs){bs=s2;best=c;}await sleep(90);}}
     else best=grab();
-    photoArr().push(best.toDataURL('image/jpeg',.86));refreshPhotoUI();camShots++;$('camCount').textContent=camShots;
+    const dataUrl=best.toDataURL('image/jpeg',.86);
+    photoArr().push(dataUrl);refreshPhotoUI();camShots++;$('camCount').textContent=camShots;
     const st=document.querySelector('.camstage');st.classList.add('flash');setTimeout(()=>st.classList.remove('flash'),180);
-  }finally{shooting=false;$('camShoot').disabled=!camStream;$('camMacroSave').disabled=!camStream;}
+    $('camShoot').textContent='\u2713 Saved';setTimeout(()=>{$('camShoot').innerHTML='&#128190; Save photo';},1100);
+    if($('camCopy').checked)saveCopyToDevice(dataUrl);
+  }finally{shooting=false;$('camShoot').disabled=!camStream;}
 };
 $('camSwitch').onclick=()=>{camFacing=camFacing==='environment'?'user':'environment';$('camDevice').value='';startCamera();};
 $('camDevice').onchange=startCamera;
@@ -1099,7 +1112,7 @@ function renderManual(){
   <details><summary>Flora and fauna species catalogue</summary><p>When adding a flora or fauna observation, use <strong>Find a species in the offline catalogue</strong>. Type a genus, scientific name or common name — for example <strong>Protea</strong> — and select a suggestion. The app fills in the scientific name, family and available English and Afrikaans common names. You can edit these fields. The catalogue is a starter reference list, not a complete checklist; verify uncertain identifications with current field guides or a qualified specialist.</p></details>
   <details><summary>Recording observations</summary><p>Choose the Flora or Fauna tab and tap <strong>Add</strong>. Record the name, date, locality, habitat and research notes. Flora entries also include flowering season and plant height. Fauna entries include a tracks / spoor field. Use <strong>Add my GPS position</strong> when appropriate. Unidentified observations can still be saved with a common name or field description and updated later.</p></details>
   <details><summary>Cultural sites and heritage observations</summary><p>Choose <strong>Cultural sites</strong> and tap <strong>Add site visit</strong>. Photographs for this section are captured with the device camera; gallery uploads and internet-downloaded images are not offered. Record the site title, era, province or country, town, role players, visit date and field notes. Respect site rules, land access, community protocols and any restrictions on photography or recording.</p></details>
-  <details><summary>Camera, macro photos and image stabilisation</summary><p>You can keep up to 12 photographs per observation. In Flora and Fauna tap <strong>Take photo</strong> for a normal photo or <strong>Macro photo</strong> for a close-up; the camera screen also has a <strong>Macro / close-up</strong> switch.</p><p><strong>How macro works:</strong> if your browser exposes a macro lens, the app switches to it. If the camera allows manual focus, the app sets it to its closest distance and shows a <em>Close-focus distance</em> slider. Many phones do not let a web page use the macro lens at all; in that case the app shows a button to open your phone&rsquo;s own camera app, where you choose its Macro mode, take the picture and it is added to the entry. Tap the picture to focus on a point, use <strong>Zoom</strong> when it appears to stay further back, and watch the <strong>focus bar</strong>: take the photo when it is full.</p><p><strong>Steady shot</strong> (on by default) takes several frames in half a second and keeps the sharpest one, which helps with shaky hands, and especially with close-ups. Image stabilisation itself is controlled by the phone, so rest your elbows or the phone on something. Camera controls vary by device and browser.</p></details>
+  <details><summary>Camera, macro photos and image stabilisation</summary><p>You can keep up to 12 photographs per observation. In Flora and Fauna tap <strong>Take photo</strong> for a normal photo or <strong>Macro photo</strong> for a close-up. On the camera screen the small <strong>Macro</strong> button switches close-up mode on or off, <strong>Save photo</strong> stores the picture in your entry (you can take several), and <strong>Done</strong> returns to the entry. Tick <em>Also save a copy to my device</em> to keep an extra copy in your Downloads folder, or in your chosen photo folder on a computer. More controls are under <strong>Camera options and tips</strong>.</p><p><strong>How macro works:</strong> if your browser exposes a macro lens, the app switches to it. If the camera allows manual focus, the app sets it to its closest distance and shows a <em>Close-focus distance</em> slider. Many phones do not let a web page use the macro lens at all; in that case the app shows a button to open your phone&rsquo;s own camera app, where you choose its Macro mode, take the picture and it is added to the entry. Tap the picture to focus on a point, use <strong>Zoom</strong> when it appears to stay further back, and watch the <strong>focus bar</strong>: take the photo when it is full.</p><p><strong>Steady shot</strong> (on by default) takes several frames in half a second and keeps the sharpest one, which helps with shaky hands, and especially with close-ups. Image stabilisation itself is controlled by the phone, so rest your elbows or the phone on something. Camera controls vary by device and browser.</p></details>
   <details><summary>GPS, privacy and sensitive locations</summary><p>GPS is optional. If permission is denied or a signal is unavailable, you can still save an entry without coordinates. Be careful about recording or sharing precise locations for threatened species, private land, archaeological resources or culturally sensitive places. Ask permission before photographing people or restricted sites.</p></details>
   <details><summary>Reports (PDF and Word), photos and backups</summary><p>Use <strong>Day or trip report &amp; photos</strong> to choose the dates and sections. <strong>Create PDF report</strong> makes a printable PDF, and <strong>Create Word document</strong> makes an editable .docx with your entries and photographs for a day or a whole trip. Each entry also has its own PDF button.</p><p><strong>Photo folder:</strong> a web app cannot create folders in your phone’s gallery by itself. On a phone, use <strong>Save photos as ZIP</strong> (it contains folders for Flora, Fauna and Cultural sites; unzip it in your Files app), <strong>Share photos</strong>, or the <strong>Save photo</strong> button when you open a photo. On a computer with Chrome or Edge, tap <strong>Choose photo folder</strong> once: the app then saves your photos into that folder, sorted into Flora, Fauna and Cultural sites, and can do it automatically each time you save an entry.</p><p>Your observations and photographs are stored in this browser on this device. Export a JSON backup regularly and store it somewhere safe. Import the backup on another device to restore your records. CSV exports contain text only, not photographs.</p></details>
   <details><summary>Terms, copyright and third-party licences</summary><p>This app is for educational and research use. Do not copy, duplicate, repackage or redistribute the app’s protected original materials without written permission. Your own field records remain yours. Third-party software and assets remain governed by their own licence agreements; retain and respect all notices in <strong>THIRD-PARTY-LICENSES.txt</strong>. Read the full <button type="button" class="textlink" id="manualTermsLink">Terms &amp; conditions</button> before use.</p></details>

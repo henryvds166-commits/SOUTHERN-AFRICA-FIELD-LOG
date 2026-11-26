@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 16
+
+- Camera screen redesigned so the buttons are always visible: a small **Macro** button, a **Save photo** button and **Done** now sit directly under the picture. Before, the Capture and Done buttons could be pushed off the bottom of the screen on a phone.
+- Added **Also save a copy to my device** (Downloads folder, or your chosen photo folder on a computer).
+- The extra controls (camera/lens, focus, zoom, steady shot and tips) moved into a collapsible **Camera options and tips** section.
+
 ## Version 15
 
 - Added a **Macro photo** button (Flora and Fauna) and a **Macro / close-up** switch on the camera screen. It uses a macro lens when the browser exposes one, the closest manual focus (with a close-focus slider) where the camera allows it, tap-to-focus and zoom where supported, and a button to use the phone's own camera app in Macro mode when the browser cannot reach the macro lens.

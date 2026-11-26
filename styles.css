@@ -236,24 +236,30 @@ footer{flex-wrap:wrap;row-gap:6px}.copyright{flex-basis:100%;text-align:center;c
 .camfbnote{margin:0 0 8px;font-size:12px;line-height:1.45;color:#d6e4d9}
 .camoptions .hidden{display:none!important}
 
+/* ---- compact camera screen: Macro, Save photo and Done always visible ---- */
+.cameradlg{display:flex;flex-direction:column;overflow:auto;max-height:100dvh}
+.cameradlg:not([open]){display:none}
+.camstage{flex:1 1 0;min-height:150px}
+.camstage video{max-height:56vh}
+.camquick,.camcopy,.camsteady,.camfallback,.camopts{flex:none}
+.camquick{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 14px 6px;flex-wrap:nowrap}
+.camMacroBtn{grid-column:auto;width:auto;flex:0 0 auto;padding:7px 11px;min-height:38px;font:600 12px Inter,system-ui,sans-serif;white-space:nowrap;border-radius:9px;background:#183d32;color:#fff;border:1px solid #456456;cursor:pointer}
+.camMacroBtn.on{background:#e6c98e;color:#183d32;border-color:#e6c98e}
+.camquick .camshutter{flex:1 1 auto;min-width:0;font-size:15px;padding:11px 14px}
+.camquick .camdone{flex:0 0 auto;padding:11px 14px}
+.camcopy{display:flex;align-items:center;gap:8px;padding:2px 16px 4px;font-size:12px;color:#d6e4d9;cursor:pointer}
+.camsteady{padding:2px 16px 6px}
+.camfallback{padding:6px 16px 8px}
+.camfbnote{font-size:11px}
+.camopts{padding:0 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #20382d}
+.camopts summary{cursor:pointer;padding:9px 0;font-size:12px;font-weight:600;color:#e6c98e;list-style:none}
+.camopts summary::-webkit-details-marker{display:none}
+.camopts summary::before{content:'\25B8  '}
+.camopts[open] summary::before{content:'\25BE  '}
+.camopts .camoptions{padding:4px 0 6px}
+.camoptions #camSwitch{grid-column:1/-1}
+@media(max-width:430px){.cameradlg{height:100dvh}.camstage video{max-height:none}}
 
-/* Compact macro control with an adjacent quick-save action */
-.photobtns .macro-photo-btn{padding:6px 10px;min-height:34px;font-size:.82rem;line-height:1.15}
-.photobtns .photo-save-btn{padding:6px 12px;min-height:34px;font-size:.85rem;line-height:1.15}
-
-
-/* Compact macro controls inside the camera popup */
-.camoptions .camMacroBtn,
-.camoptions .camMacroSaveBtn{
-  grid-column:auto;
-  width:auto;
-  min-height:32px;
-  padding:5px 9px;
-  font-size:11px;
-  line-height:1.2;
-}
-.camoptions .camMacroSaveBtn{background:#e6c98e;color:#183d32;border:1px solid #e6c98e}
-.camoptions .camMacroSaveBtn:disabled{opacity:.45;cursor:not-allowed}
-@media(max-width:480px){
-  .camoptions .camMacroBtn,.camoptions .camMacroSaveBtn{font-size:10px;padding:5px 7px}
-}
+.camstage{flex:0 1 auto;overflow:hidden}
+.camstage video{height:auto}
+@media(max-width:430px){.camstage{flex:1 1 0}.camstage video{height:100%}}

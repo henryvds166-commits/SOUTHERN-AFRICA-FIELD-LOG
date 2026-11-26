@@ -148,7 +148,7 @@
     <div class="photoempty" id="photoEmpty">No photographs yet</div>
     <div class="photobtns">
      <button type="button" class="btn secondary" id="takePhoto">&#128247; Take photo</button>
-     <button type="button" class="btn secondary macro-photo-btn" id="macroPhoto">&#128269; Macro photo</button>
+     <button type="button" class="btn secondary" id="macroPhoto">&#128269; Macro photo</button>
      <label class="btn secondary filebutton">&#128444; Add photos<input id="photo" type="file" accept="image/*" multiple></label>
      <button type="button" class="btn danger hidden" id="removeAllPhotos">Delete all photos</button>
     </div>
@@ -248,23 +248,25 @@
 <dialog id="cameraDialog" class="cameradlg">
  <div class="camhead"><strong>Take photo</strong><button type="button" class="close" id="camClose" aria-label="Close camera">&times;</button></div>
  <div class="camstage"><video id="camVideo" playsinline muted autoplay></video><i class="focusring hidden" id="focusRing"></i><div class="camerr hidden" id="camErr"></div></div>
- <div class="camoptions">
-  <label id="camDeviceWrap">Camera / lens<select id="camDevice"><option value="">Automatic rear camera</option></select></label>
-  <label id="camFocusWrap">Focus<select id="camFocus"><option value="auto">Automatic focus</option></select></label>
-  <button type="button" class="btn secondary camMacroBtn" id="camMacro">&#128269; Macro / close-up: off</button>
-  <button type="button" class="btn secondary camMacroSaveBtn" id="camMacroSave" disabled>&#128190; Save macro photo</button>
-  <label class="camrange hidden" id="camFocusDistWrap">Close-focus distance (move to the sharpest)<input type="range" id="camFocusDist" min="0" max="1" step="0.01" value="0"></label>
-  <label class="camrange hidden" id="camZoomWrap">Zoom (lets you stay further back for a sharp close-up)<input type="range" id="camZoom" min="1" max="1" step="0.1" value="1"></label>
-  <label class="camchk"><input type="checkbox" id="camSteady" checked> Steady shot: keep the sharpest of several quick frames</label>
-  <div class="camsteady"><span class="steadybar"><i id="steadyFill"></i></span><span id="steadyText">Focus and steadiness</span></div>
-  <p id="camEnhanceStatus" role="status">Camera enhancements depend on device support.</p>
+ <div class="camquick">
+  <button type="button" class="camMacroBtn" id="camMacro">&#128269; Macro: off</button>
+  <button type="button" class="btn primary camshutter" id="camShoot" disabled>&#128190; Save photo</button>
+  <button type="button" class="btn secondary camdone" id="camDone">Done (<span id="camCount">0</span>)</button>
  </div>
+ <label class="camcopy"><input type="checkbox" id="camCopy"> Also save a copy to my device</label>
+ <div class="camsteady"><span class="steadybar"><i id="steadyFill"></i></span><span id="steadyText">Focus and steadiness</span></div>
  <div class="camfallback hidden" id="camFallback"><p class="camfbnote" id="camFallbackNote"></p><label class="btn secondary filebutton">Open my camera app instead<input id="camNative" type="file" accept="image/*" capture="environment"></label></div>
- <div class="camactions">
-  <button type="button" class="btn secondary hidden" id="camSwitch">&#8635; Switch camera</button>
-  <button type="button" class="btn primary camshutter" id="camShoot" disabled>&#9679; Capture</button>
-  <button type="button" class="btn secondary" id="camDone">Done (<span id="camCount">0</span>)</button>
- </div>
+ <details class="camopts" id="camOpts"><summary>Camera options and tips</summary>
+  <div class="camoptions">
+   <label id="camDeviceWrap">Camera / lens<select id="camDevice"><option value="">Automatic rear camera</option></select></label>
+   <label id="camFocusWrap">Focus<select id="camFocus"><option value="auto">Automatic focus</option></select></label>
+   <button type="button" class="btn secondary hidden" id="camSwitch">&#8635; Switch camera</button>
+   <label class="camrange hidden" id="camFocusDistWrap">Close-focus distance (move to the sharpest)<input type="range" id="camFocusDist" min="0" max="1" step="0.01" value="0"></label>
+   <label class="camrange hidden" id="camZoomWrap">Zoom (lets you stay further back for a sharp close-up)<input type="range" id="camZoom" min="1" max="1" step="0.1" value="1"></label>
+   <label class="camchk"><input type="checkbox" id="camSteady" checked> Steady shot: keep the sharpest of several quick frames</label>
+   <p id="camEnhanceStatus" role="status">Camera enhancements depend on device support.</p>
+  </div>
+ </details>
 </dialog>
 
 <dialog id="photoDialog" class="lightbox"><button type="button" class="close lightclose" id="closePhoto" aria-label="Close photo">&times;</button><img id="photoLarge" alt="Photograph"><button type="button" class="btn secondary savephoto" id="savePhoto">&#11015; Save photo</button></dialog>
